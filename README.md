@@ -1,65 +1,82 @@
-# CareLink – Elder Support AI System
+# CareLink – Elder Support AI Platform
 
-CareLink is the production evolution of the LifeCompanion concept.  
-It separates responsibilities into **Agents**, **Engines**, and **Services** exactly as described in `docs/architecture/carelink_system_spec_cursor_ready.md`.
+CareLink is a multi-service platform that delivers a single conversational companion while keeping reasoning, analytics, and infrastructure isolated. Every runtime component maps to the canonical spec in `docs/architecture/carelink_system_spec_cursor_ready.md`:
 
-Core pillars:
-- **Dialogue Agent** provides a warm, multimodal interface.
-- **Coach + Safety Agents** reason over deterministic outputs from the engines.
-- **Physical Health Engine** and **Mind & Behavior Engine** compute trends/alerts from sensor and conversational signals.
-- **Memory Manager** exposes deterministic APIs for storing/retrieving user memories, goals, and safety profiles.
-- **Gateway App** is now a thin authenticated API surface that forwards requests to the internal mesh.
+- **Agents** orchestrate LLM reasoning (`agents/dialogue`, `agents/coach`, `agents/safety`).
+- **Engines** compute deterministic analytics (`engines/physical`, `engines/mind-behavior`).
+- **Services** provide infrastructure primitives (`services/event-bus`, `services/memory-manager`, `services/scheduling`).
+- **Apps** expose the user/API surfaces (`apps/gateway`, `frontend`).
 
-## Folder Structure
+The repository is organised so each agent/engine/service can run independently during development.
 
-- `README.md` – high-level overview
-- `docs/`
-  - `architecture.md` – system architecture (backend, frontend, infra)
-  - `ai-architecture.md` – agents, modes, flows
-  - `requirements.md` – functional & non-functional requirements
-  - `technical-design.md` – detailed design decisions
-  - `tools-and-apis.md` – external services and how to use them
-  - `elevenlabs-agent-setup.md` – ElevenLabs agent creation + embedding workflow
-  - `memory.md` – Firestore schema + semantic memory (RAG)
-  - `observability-phoenix.md` – logging and tracing LLM flows with Phoenix
-  - `evals.md` – evaluation strategy for the agent
-- `prompts/`
-  - `system-life-companion.md`
-  - `agent-mode-planner.md`
-  - `agent-emotion-classifier.md`
-  - `agent-coach.md`
-  - `agent-tone-selector.md`
-- `agents/`
-  - `dialogue/` – Dialogue Orchestrator service calling engines/memory and publishing bus events.
-  - `coach/` – Event-driven coach agent (subscribes to `coach.trigger.v1`).
-  - `safety/` – Event-driven safety/escalation agent (subscribes to `safety.trigger.v1`).
-  - `memory-nightly/` – _reserved_ for compression/digest automation.
-- `engines/`
-  - `physical/` – deterministic vitals analytics stub + alert stream.
-  - `mind-behavior/` – unified emotional/cognitive/social/routine analytics stub.
-- `services/`
-  - `memory-manager/` – HTTP API matching CareLink's memory contracts.
-  - `event-bus/` – SSE relay for publishing/consuming the architecture contracts.
-  - `scheduling/` – deterministic scheduling and notification stub.
-- `apps/`
-  - `gateway/` – public HTTP API (dialogue gateway).
-  - `frontend/` – developer-facing UI (still under `frontend/` directory).
+## Repository Layout
 
-Start by reading:
+| Path | Description |
+| --- | --- |
+| `agents/dialogue` | Runs Listener → Emotion → Planner → Coach pipeline, persists turns, emits coach/safety events, and consumes `safety.command.v1` instructions. |
+| `agents/coach` | Subscribes to `coach.trigger.v1`, generates plans (`prompts/coach-plan-generator.md`), schedules reminders, and emits `coach.plan.ready.v1`. |
+| `agents/safety` | Listens to `safety.trigger.v1` + engine alerts, evaluates incidents, issues dialogue commands, and notifies caregivers or emergency contacts. |
+| `engines/physical` | Mock vitals analytics service (`/state`, `/trends`, `/alerts/stream`). |
+| `engines/mind-behavior` | Mock emotional/cognitive/social/routine analytics service. |
+| `services/event-bus` | SSE bus with a persistent backlog used by all agents. |
+| `services/memory-manager` | Firestore-based API for storing turns, memories, and safety profiles. |
+| `services/scheduling` | Stub scheduling/notification API used by Coach and Safety agents. |
+| `apps/gateway` | Public HTTP API (Express) that validates requests and fans out to Dialogue agent + ElevenLabs. |
+| `frontend` | Developer playground for driving the backend and hosted ElevenLabs widget. |
 
-1. `docs/architecture/carelink_system_spec_cursor_ready.md`
-2. `docs/architecture/repo_structure.md`
-3. `docs/ai-architecture.md`
-4. `prompts/system-life-companion.md`
+Documentation is under `docs/` and mirrors this structure:
 
-Then run the stub services (`services/event-bus`, `engines/*`, `services/memory-manager`, `agents/dialogue`, `agents/coach`, `agents/safety`) alongside `apps/gateway` to exercise the end-to-end pipeline.
+- `docs/architecture/carelink_system_spec_cursor_ready.md` – canonical spec.  
+- `docs/architecture/carelink_agents.md` / `carelink_services.md` / `carelink_engines.md` – deep dives.  
+- `docs/ai-architecture.md` – dialogue orchestration flow.  
+- `docs/architecture/repo_structure.md` – event contracts and service map.  
+- `docs/elevenlabs-agent-setup.md` – configuring the hosted agent experience.
 
-### One-command local stack
+## Running the Stack
 
-After you populate the required `.env` files, start every service plus the frontend playground with:
+Each service is a plain Node/TypeScript project with `npm run dev`. For convenience use the helper script once your `.env` files are ready:
 
 ```bash
 ./scripts/run-stack.sh
 ```
 
-Logs are prefixed per service; press `Ctrl+C` once when you want to stop the stack and the script will terminate all child processes.
+The script starts, in order, `event-bus`, `memory-manager`, `scheduling`, `engines/*`, `agents/*`, `apps/gateway`, and the Vite frontend. Press `Ctrl+C` once to terminate all subprocesses.
+
+### Running services manually
+
+```bash
+cd services/event-bus && npm install && npm run dev
+cd services/memory-manager && npm install && npm run dev
+cd services/scheduling && npm install && npm run dev
+cd agents/dialogue && npm install && npm run dev
+cd agents/coach && npm install && npm run dev
+cd agents/safety && npm install && npm run dev
+cd apps/gateway && npm install && npm run dev
+cd frontend && npm install && npm run dev
+```
+
+The frontend proxies API calls to `http://localhost:8080` by default and includes the ElevenLabs widget/Voice Orb for testing.
+
+### Safety workflow smoke test
+
+The Python helper spins up the critical services and pushes a sample `safety.trigger.v1` event:
+
+```bash
+python3 scripts/test-safety-agent.py
+```
+
+It requires `aiohttp` (install via `python3 -m pip install aiohttp`). The script publishes an alert and prints the Event Bus response; stop it once you have observed the agent logs.
+
+## Testing & Diagnostics
+
+- **Coach agent unit tests:** `cd agents/coach && npx vitest run` (covers plan generation + telemetry).
+- **Manual integration:** use the frontend playground or `scripts/test-safety-agent.py` to verify alert → safety command → dialogue flow.
+- **Event Bus backlog:** `GET http://localhost:4300/events/stream/<topic>?lastEventId=<id>` replays buffered events, which is useful when restarting agents.
+
+## Additional References
+
+1. `docs/architecture/carelink_system_spec_cursor_ready.md` – source of truth for responsibilities and APIs.  
+2. `docs/ai-architecture.md` – detailed dialogue/coaching flow, prompts, and tone map.  
+3. `docs/architecture/carelink_agents.md` – per-agent responsibilities, triggers, and outputs.  
+4. `docs/architecture/carelink_services.md` – scheduling, memory, event bus, and notification contracts.  
+5. `prompts/` – all LLM prompts referenced by the agents.

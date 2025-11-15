@@ -58,24 +58,23 @@ They do not perform high-level reasoning or user-facing orchestration.
 ## 3. System Infrastructure Services
 
 ### 3.1 Event Bus
-- Asynchronous event transport for:
-  - alert streams from engines,
-  - internal triggers between agents.
+- Node/Express service that exposes `POST /events` and `GET /events/stream/:topic`.
+- Maintains an in-memory backlog per topic so that reconnecting agents can replay missed events via `?lastEventId=<id>`.
+- Hosts all cross-agent contracts used today: `coach.trigger.v1`, `coach.plan.ready.v1`, `safety.trigger.v1`, `safety.command.v1`, `safety.command.handled.v1`, `physical.alert.v1`, `mind_behavior.alert.v1`.
 
 ### 3.2 Scheduling & Notification Service
-- Schedule tasks/reminders.
-- Send notifications across channels (push, SMS, calls, etc.).
+- Stub service with the following endpoints:
+  - `POST /schedule-task` — store a reminder payload.
+  - `POST /cancel-task` — mark a reminder as cancelled.
+  - `POST /send-notification` — echo the payload (used by Coach/Safety agents for caregiver/emergency pings).
+- Stores data in-memory for now; restarting the service resets the queue.
 
 ### 3.3 Permissions & Privacy Service
 - Central policy engine for who can see what data.
 - Used heavily by Safety Agent, Coach Agent, Reporting.
 
 ### 3.4 Logging & Audit Service
-- Stores:
-  - safety decisions,
-  - escalations,
-  - access logs,
-  - plan changes.
+- Not implemented as a standalone service yet. Safety and Coach agents log incidents back into the Memory Manager collections so they can be audited until a dedicated service is added.
 
 ### 3.5 Content & Exercise Library
 - Repository of:

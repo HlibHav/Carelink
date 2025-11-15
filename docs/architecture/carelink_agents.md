@@ -3,82 +3,76 @@
 ## 1. Dialogue Orchestrator Agent
 
 **Type:** LLM agent  
-**Role:** Single conversational interface of CareLink.
+**Role:** Single conversational interface for CareLink.
 
 ### Responsibilities
-- Interpret user speech/text and emotional state.
-- Retrieve relevant memories and state summaries from engines.
-- Generate empathetic, context-aware responses.
-- Trigger Coach & Planning Agent and Global Safety & Escalation Agent when needed.
-- Submit candidate memories to the Memory Manager.
+- Convert user STT text into a structured view (Listener + Emotion classifier).
+- Pull memories and engine summaries, run the Planner + Coach prompts, and persist turns.
+- Emit downstream events (`coach.trigger.v1`, `safety.trigger.v1`).
+- Consume `safety.command.v1` instructions and ensure the next response honours the safety prompt.
 
 ### Inputs
-- Transcribed text from STT.
-- Raw emotion signals (from prosody/text).
-- Refined emotion classification (Emotion services).
-- Intents & extracted facts (NLU).
-- Summaries from:
-  - Physical Health Engine
-  - Mind & Behavior Engine
-- Coaching scripts and interventions from the Coach & Planning Agent.
-- Safety prompts from the Global Safety & Escalation Agent.
+- STT text plus optional audio metadata.
+- Listener result (facts, intents, raw emotion).
+- Refined emotion classification.
+- Memory Manager retrieval (facts/goals/gratitude, profile snapshot).
+- Physical & Mind & Behavior engine summaries.
+- Pending safety commands (dequeued from the Event Bus subscriber).
 
 ### Outputs
-- User-facing responses (text → TTS).
-- `store_candidate_memory(user_id, payload)` calls to Memory Manager.
-- Internal triggers like `coach_trigger`, `safety_trigger` events.
+- User-facing responses (text + tone metadata passed to TTS).
+- `store_candidate_memory` calls for new facts.
+- `coach.trigger.v1` events when the planner selects the coach mode.
+- `safety.trigger.v1` events when vitals or emotion trends indicate elevated risk.
+- `safety.command.handled.v1` acknowledgements after executing a safety prompt.
 
 ---
 
-## 2. Global Safety & Escalation Agent
-
-**Type:** Rule-based + LLM agent  
-**Role:** Central emergency decision-maker for CareLink.
-
-### Responsibilities
-- Subscribe to critical alerts from all engines.
-- Evaluate the user’s safety profile and escalation policies.
-- Attempt to contact the user via the Dialogue Orchestrator Agent.
-- Decide if and when to escalate to caregivers or emergency services.
-- Log all safety-related decisions for audit.
-
-### Inputs
-- `physical_alert_stream` (info/warning/critical).
-- `mind_behavior_alert_stream` (info/warning/critical).
-- Safety profile from Memory Manager / User Twin.
-- History of past incidents.
-
-### Outputs
-- Commands to Dialogue Orchestrator Agent (“check how the user is doing”, “ask confirmation”).
-- Notifications to caregivers, relatives, or services (via Notification Service).
-- Logged incident reports in Logging & Audit.
-
----
-
-## 3. Coach & Planning Agent
+## 2. Coach & Planning Agent
 
 **Type:** LLM/logic agent  
-**Role:** Integrated coach across all domains: physical, emotional, cognitive, social, and routine/independence.
+**Role:** Generate structured care plans and follow-up tasks.
 
 ### Responsibilities
-- Periodically synthesize physical and mind/behavior state summaries.
-- Consider user goals, preferences, fears, and barriers (from Memory Manager).
-- Produce personalized daily/weekly coaching plans.
-- Select relevant exercises and interventions from the Content & Exercise Library.
-- Schedule reminders, activities, and check-ins via Scheduling Service.
-- Provide scripts and prompts for Dialogue Orchestrator Agent.
+- Subscribe to `coach.trigger.v1` events from Dialogue.
+- Build context from Memory Manager plus engine summaries.
+- Run the coach plan generator prompt, store plan highlights back into memory, and emit `coach.plan.ready.v1`.
+- Schedule micro-actions and notifications via the Scheduling service.
 
 ### Inputs
-- `get_physical_state_summary(user_id)` from Physical Health Engine.
-- `get_mind_behavior_state_summary(user_id)` from Mind & Behavior Engine.
-- `retrieve_for_coach(user_id)` from Memory Manager.
-- Content & Exercise Library queries.
+- Trigger metadata (`user_id`, `turn_id`, requested mode, reason).
+- Memory Manager coach retrieval (goals/open loops).
+- Physical & Mind & Behavior summaries.
 
 ### Outputs
-- Structured plans (e.g. JSON or structured objects).
-- Calls to `schedule_task(...)` in Scheduling Service.
-- High-level “coach alerts” when a domain needs extra attention.
-- Conversation scripts/templates for Dialogue Orchestrator Agent.
+- Structured plan JSON (`coach.plan.ready.v1`).
+- `schedule-task` + `send-notification` calls for actionable items.
+- Stored recommendations in Memory Manager for later retrieval.
+- Telemetry logs for observability.
+
+---
+
+## 3. Safety & Escalation Agent
+
+**Type:** Rule-based + LLM agent  
+**Role:** Central emergency decision-maker.
+
+### Responsibilities
+- Subscribe to engine alert topics and `safety.trigger.v1` events.
+- Fetch the user’s safety profile/safety history.
+- Evaluate the incident (rules + LLM policy) and decide to monitor, run a dialogue check, or escalate.
+- Issue `safety.command.v1` prompts to Dialogue agent, log incidents, and send caregiver/emergency notifications.
+
+### Inputs
+- `physical.alert.v1`, `mind_behavior.alert.v1`, `safety.trigger.v1` events.
+- Safety profile from Memory Manager.
+- Incident history (via `logIncident`).
+
+### Outputs
+- Dialogue instructions (`safety.command.v1`).
+- Caregiver/emergency notifications via Scheduling service.
+- Incident entries stored in Memory Manager.
+- Telemetry covering trigger receipt, decision, and completion.
 
 ---
 

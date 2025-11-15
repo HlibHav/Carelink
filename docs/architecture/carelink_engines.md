@@ -5,6 +5,8 @@ CareLink uses two deterministic analytics engines:
 1. **Physical Health Engine**
 2. **Mind & Behavior Engine**
 
+> **Implementation note**: The current repository contains stub implementations of both engines that generate deterministic mock data. They expose the interfaces described below so the rest of the platform can evolve independently while real ingestion pipelines are being built.
+
 Engines **do not** interact with users directly and **do not** make autonomous decisions.
 They compute metrics, trends, risks, and anomalies.
 
