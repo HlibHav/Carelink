@@ -2,6 +2,7 @@ import { Conversation } from '@elevenlabs/client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getElevenLabsAgentConfig } from '../lib/api.js';
+import { createDialogueClientTools } from '../lib/elevenLabsTools.js';
 import type { AuthConfig } from '../lib/types.js';
 import { Aurora } from './Aurora.js';
 
@@ -69,6 +70,18 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
   const [shouldAutoConnect, setShouldAutoConnect] = useState(envAutoConnect);
 
   const conversationRef = useRef<ConversationInstance | null>(null);
+  const dialogueClientTools = useMemo(
+    () =>
+      createDialogueClientTools({
+        auth,
+        defaultUserId: envUserId,
+        onError: (message, error, parameters) => {
+          console.warn('Dialogue orchestrator tool error', { message, error, parameters });
+          setError(message);
+        },
+      }),
+    [auth, setError],
+  );
 
   useEffect(() => {
     if (!auth || envAgentId || envConversationToken || envSignedUrl) {
@@ -175,6 +188,7 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
       const sessionConfig = buildSessionConfig();
       const conversation = await Conversation.startSession({
         ...sessionConfig,
+        ...(dialogueClientTools ?? {}),
         onStatusChange: (value) => {
           const resolved =
             typeof value === 'string' ? value : typeof value?.status === 'string' ? value.status : undefined;
@@ -214,7 +228,8 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
     } finally {
       setAutoConnectAttempted(true);
     }
-  }, [buildSessionConfig, cleanUpConversation, envVolume, handleRequestMic, status]);
+<<<<<<< HEAD
+  }, [buildSessionConfig, cleanUpConversation, dialogueClientTools, envVolume, handleRequestMic, status]);
 
   useEffect(() => {
     const hasConfig = Boolean(agentId.trim() || signedUrl.trim() || conversationToken.trim());

@@ -47,6 +47,10 @@ export const config = {
   services: {
     physicalEngineUrl:
       process.env.PHYSICAL_ENGINE_URL?.replace(/\/$/, '') ?? 'http://localhost:4101',
+    mindBehaviorEngineUrl:
+      process.env.MIND_BEHAVIOR_ENGINE_URL?.replace(/\/$/, '') ?? 'http://localhost:4102',
+    memoryManagerUrl:
+      process.env.MEMORY_MANAGER_URL?.replace(/\/$/, '') ?? 'http://localhost:4103',
     dialogueAgentUrl:
       process.env.DIALOGUE_AGENT_URL?.replace(/\/$/, '') ?? 'http://localhost:4200',
   },

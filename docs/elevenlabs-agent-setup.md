@@ -113,3 +113,18 @@ Associate the MCP server with the agent inside the ElevenLabs UI or through the 
 4. Visit `http://localhost:5173/`. The React widget now auto-requests the config, obtains the conversation token from the backend, handles mic permission, and calls `Conversation.startSession()` immediately. Toggle `VITE_ELEVENLABS_DEBUG=true` (frontend) for detailed console traces, and set `VITE_ELEVENLABS_AUTO_CONNECT=false` if you want to opt out of automatic calls.
 
 With this flow, creating or updating the agent happens entirely through the ElevenLabs APIs above, and embedding simply means keeping the backend token endpoint running so the frontend can join the conversation instantly.
+
+## 6. Register the CareLink Dialogue Orchestrator Client Tool
+
+The hosted ElevenLabs agent must know how to call back into CareLink whenever it needs a deeply contextual response.  
+We expose this as a **client tool** named `carelink_dialogue_orchestrator`, which the frontend widgets already advertise via `clientTools`.  
+Run the helper script below (from the repo root) to patch your ElevenLabs agent with the required tool definition:
+
+```bash
+ELEVENLABS_API_KEY=sk-... \
+ELEVENLABS_AGENT_ID=agent_123 \
+node scripts/ensure-elevenlabs-client-tool.mjs
+```
+
+The script reads `.env` automatically, calls `PATCH /v1/convai/agents/{agent_id}`, and registers the tool with the correct arguments (`input`, `session_id`, `user_id`, `locale`).  
+After this step, the ElevenLabs agent can invoke `carelink_dialogue_orchestrator` whenever it needs CareLink to handle a user turn. The frontend receives the tool call, forwards the transcript to `/api/elevenlabs/dialogue-turn`, and streams the orchestrated reply back to the hosted session.

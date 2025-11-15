@@ -20,10 +20,10 @@ It authenticates public clients, handles media uploads, and forwards requests to
    - `OPENAI_API_KEY` plus optional `OPENAI_*_MODEL` overrides for chat/emotion/planner/embeddings/Whisper
    - `PHOENIX_ENDPOINT` – placeholder for observability client
    - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – configure the voice agent
-- `PHYSICAL_ENGINE_URL` – base URL of `engines/physical`
-- `MIND_BEHAVIOR_ENGINE_URL` – base URL of `engines/mind-behavior`
-- `MEMORY_MANAGER_URL` – base URL of `services/memory-manager`
-- `DIALOGUE_AGENT_URL` – base URL of the `agents/dialogue` service
+   - `PHYSICAL_ENGINE_URL` – base URL of `engines/physical`
+   - `MIND_BEHAVIOR_ENGINE_URL` – base URL of `engines/mind-behavior`
+   - `MEMORY_MANAGER_URL` – base URL of `services/memory-manager`
+   - `DIALOGUE_AGENT_URL` – base URL of the `agents/dialogue` service
 
 Create a `.env` file if you want to run locally (trim to what you need):
 
@@ -54,6 +54,7 @@ DIALOGUE_AGENT_URL=http://localhost:4200
 | `POST /api/start-conversation` | Creates a session and returns WebSocket/SSE endpoints |
 | `POST /api/user-utterance` | Runs the multi-agent orchestrator (Whisper → LLM → RAG → ElevenLabs) for a session turn |
 | `GET /api/session-summary?sessionId=...` | Returns nightly summary placeholder data |
+| `POST /api/elevenlabs/dialogue-turn` | Invokes the Dialogue Orchestrator for ElevenLabs hosted agents |
 
 All `/api/*` routes require:
 - `Authorization: Bearer <token>`
