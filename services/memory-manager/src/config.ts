@@ -20,4 +20,10 @@ export const config = {
     emulatorHost: process.env.FIRESTORE_EMULATOR_HOST,
     keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
   },
+  weaviate: {
+    host: process.env.WEAVIATE_HOST || 'localhost',
+    port: Number(process.env.WEAVIATE_PORT || 8082),
+    scheme: (process.env.WEAVIATE_SCHEME === 'https' ? 'https' : 'http') as 'http' | 'https',
+    apiKey: process.env.WEAVIATE_API_KEY,
+  },
 };

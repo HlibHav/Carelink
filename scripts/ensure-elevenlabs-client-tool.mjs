@@ -224,13 +224,13 @@ const run = async () => {
     console.log(`   Body size: ${JSON.stringify(updatePayload).length} bytes\n`);
     
     const updateResponse = await fetch(updateUrl, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
         'xi-api-key': apiKey, // API key in header as per ElevenLabs docs
-      },
+    },
       body: JSON.stringify(updatePayload),
-    });
+  });
 
     console.log(`📥 Response Status: ${updateResponse.status} ${updateResponse.statusText}`);
     console.log(`   Headers:`, Object.fromEntries(updateResponse.headers.entries()));

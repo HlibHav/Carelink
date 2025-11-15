@@ -1,9 +1,9 @@
 # Memory Specification
 
-LifeCompanion uses **Firestore** + **OpenAI embeddings** to implement both:
+CareLink uses **Weaviate** (vector database) + **Firestore** (metadata) to implement both:
 
-- **Structured memory** (facts, goals, gratitude, mood)
-- **Semantic memory** (RAG-style retrieval)
+- **Semantic memory** (RAG-style retrieval via Weaviate)
+- **Structured metadata** (profiles, sessions, playbooks in Firestore)
 
 ---
 
@@ -93,11 +93,15 @@ Life facts and routines extracted from conversations:
 ```json
 {
   "text": "My sister Olya lives in Lviv.",
-  "embedding": [0.0123, -0.0456, ...],
   "type": "family",   // "family" | "hobby" | "health" | "routine"
-  "createdAt": "2025-11-14T15:20:00Z"
+  "importance": "medium",
+  "metadata": {},
+  "createdAt": "2025-11-14T15:20:00Z",
+  "weaviateId": "uuid-reference-to-weaviate"
 }
 ```
+
+**Note**: Vector embeddings are stored in **Weaviate**, not Firestore. Firestore stores metadata and references.
 
 **Extraction rules:**
 - Only written when Listener/Memory Agent confidently identifies a stable fact
@@ -113,11 +117,15 @@ User goals and habits:
 ```json
 {
   "text": "I want to go for a walk at least three times a week.",
-  "embedding": [0.01, 0.03, ...],
   "status": "active",   // "active" | "done"
-  "createdAt": "2025-11-14T16:00:00Z"
+  "importance": "high",
+  "metadata": {},
+  "createdAt": "2025-11-14T16:00:00Z",
+  "weaviateId": "uuid-reference-to-weaviate"
 }
 ```
+
+**Note**: Vector embeddings are stored in **Weaviate**, not Firestore.
 
 ---
 
@@ -128,10 +136,14 @@ Gratitude journal entries:
 ```json
 {
   "text": "I'm grateful that I talked with my grandson today.",
-  "embedding": [0.02, -0.03, ...],
-  "createdAt": "2025-11-14T20:30:00Z"
+  "importance": "medium",
+  "metadata": {},
+  "createdAt": "2025-11-14T20:30:00Z",
+  "weaviateId": "uuid-reference-to-weaviate"
 }
 ```
+
+**Note**: Vector embeddings are stored in **Weaviate**, not Firestore.
 
 ---
 
@@ -150,31 +162,36 @@ Daily mood aggregates (day format: "YYYY-MM-DD"):
 
 ## Semantic RAG Design
 
-We keep RAG **simple** and **local** to Firestore.
+CareLink uses **Weaviate** for semantic search and **Firestore** for metadata storage.
+
+### Architecture
+
+- **Weaviate**: Stores vector embeddings and performs semantic search
+  - Collection: `Memory`
+  - Vectorizer: `text2vec-openai` (text-embedding-3-small, 1536 dimensions)
+  - Properties: userId, category, text, importance, factType, goalStatus, metadata, timestamps
+  
+- **Firestore**: Stores structured metadata
+  - User profiles, conversation sessions, playbooks
+  - References to Weaviate objects via `weaviateId`
 
 ### Embeddings
 
-- Use `text-embedding-3-small` from OpenAI.
+- Use `text-embedding-3-small` from OpenAI (via Weaviate's text2vec-openai module).
 - For each new:
   - `fact`
   - `goal`
   - `gratitude` entry
-- We compute an embedding and store it directly in Firestore as an array of floats.
+- Weaviate automatically generates embeddings when storing memories.
 
 ### Retrieval (Base RAG Layer)
 
 For each new user utterance:
 
-1. Compute its embedding.
-2. Load last N documents (e.g., 200) from:
-   - `facts`
-   - `goals`
-   - `gratitude`
-3. Compute cosine similarity in memory (TypeScript):
-   ```ts
-   function cosineSimilarity(a: number[], b: number[]): number { ... }
-   ```
-4. Rank by similarity.
+1. Query Weaviate with semantic search (`nearText`).
+2. Filter by `userId` and optional `category`, `factType`, `goalStatus`.
+3. Weaviate returns top-k results ranked by cosine similarity.
+4. Results include distance scores for ranking.
 5. Take top-k (e.g. 10–20) per category as **candidates**.
 
 **Note**: These raw RAG results are then passed to **Context Engineering Agent** for intelligent curation (see below).
@@ -263,7 +280,8 @@ Simple RAG returns top-k by semantic similarity, but doesn't consider:
 - **Short-term**:
   - Last 5–10 turns in the current session (kept in backend memory).
 - **Long-term**:
-  - Firestore collections for facts, goals, gratitude, mood.
+  - **Weaviate**: Vector embeddings for facts, goals, gratitude (semantic search)
+  - **Firestore**: Metadata, profiles, sessions, playbooks (structured data)
 
 The orchestrator uses both when constructing LLM prompts.
 

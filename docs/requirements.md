@@ -79,7 +79,7 @@
 
 - The system MUST:
   - Allow user to express 1–3 things they are grateful for.
-  - Store gratitude entries in Firestore with timestamps and embeddings.
+  - Store gratitude entries: metadata in Firestore, vector embeddings in Weaviate.
   - Be able to recall past gratitude for reflection (e.g. weekly summary).
 
 ### FR-6: Long-Term Memory

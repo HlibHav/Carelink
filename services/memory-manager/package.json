@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@carelink/memory-storage": "file:../../packages/memory-storage",
+    "@carelink/weaviate-client": "file:../../packages/weaviate-client",
     "@google-cloud/firestore": "^8.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
