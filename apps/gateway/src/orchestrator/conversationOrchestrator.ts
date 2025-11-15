@@ -1,16 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
 import { elevenLabsService } from '../services/elevenLabsService.js';
-import { memoryService } from '../services/memoryService.js';
 import { transcribeAudio } from '../services/sttService.js';
 import { errors } from '../shared/httpErrors.js';
+import { getMindBehaviorStateSummary } from '../clients/mindBehaviorEngineClient.js';
+import { getPhysicalStateSummary } from '../clients/physicalEngineClient.js';
+import {
+  retrieveDialogueContext,
+  saveConversationTurn,
+  storeCandidateMemories,
+} from '../clients/memoryManagerClient.js';
 
 import { generateCoachReply } from './coachAgent.js';
 import { refineEmotionState } from './emotionAgent.js';
 import { runListenerAgent } from './listenerAgent.js';
 import { planNextTurn } from './plannerAgent.js';
 import { determineTone } from './toneAgent.js';
-import type { OrchestratorInput, OrchestratorResult } from './types.js';
+import type { EmotionState, OrchestratorInput, OrchestratorResult } from './types.js';
 
 export async function runConversationPipeline(
   input: OrchestratorInput,
@@ -30,7 +36,27 @@ export async function runConversationPipeline(
   }
 
   const turnId = `turn_${randomUUID()}`;
-  const context = await memoryService.getConversationContext(input.userId, transcript);
+  const [memorySnapshot, physicalState, mindBehaviorState] = await Promise.all([
+    retrieveDialogueContext(input.userId, transcript),
+    getPhysicalStateSummary(input.userId).catch((error) => {
+      console.error('Physical engine unavailable', error);
+      return undefined;
+    }),
+    getMindBehaviorStateSummary(input.userId).catch((error) => {
+      console.error('Mind & Behavior engine unavailable', error);
+      return undefined;
+    }),
+  ]);
+  const context = {
+    profile: memorySnapshot.profile,
+    facts: memorySnapshot.facts ?? [],
+    goals: memorySnapshot.goals ?? [],
+    gratitude: memorySnapshot.gratitude ?? [],
+    lastMode: memorySnapshot.lastMode,
+    lastEmotion: (memorySnapshot.lastEmotion as EmotionState | null) ?? null,
+    physicalState,
+    mindBehaviorState,
+  };
   const listener = await runListenerAgent(transcript);
   const emotion = await refineEmotionState(listener, context.profile);
   const plan = await planNextTurn({
@@ -38,6 +64,8 @@ export async function runConversationPipeline(
     profile: context.profile,
     openLoops: context.goals,
     lastMode: context.lastMode,
+    physicalStateSummary: context.physicalState,
+    mindBehaviorSummary: context.mindBehaviorState,
   });
   const coach = await generateCoachReply({
     listener,
@@ -52,18 +80,16 @@ export async function runConversationPipeline(
     tone,
   });
 
-  await memoryService.saveConversationTurn({
-    userId: input.userId,
+  await saveConversationTurn(input.userId, {
     sessionId: input.sessionId,
     turnId: `${turnId}_user`,
     role: 'user',
     text: transcript,
-    metadata: input.metadata,
     emotion,
+    metadata: input.metadata,
   });
 
-  await memoryService.saveConversationTurn({
-    userId: input.userId,
+  await saveConversationTurn(input.userId, {
     sessionId: input.sessionId,
     turnId: `${turnId}_assistant`,
     role: 'assistant',
@@ -73,7 +99,11 @@ export async function runConversationPipeline(
   });
 
   if (listener.facts?.length) {
-    await memoryService.saveMemories(input.userId, 'facts', listener.facts);
+    await storeCandidateMemories(
+      input.userId,
+      'facts',
+      listener.facts.map((fact) => ({ text: fact.text, importance: 'medium' })),
+    );
   }
 
   return {

@@ -1,0 +1,88 @@
+systemName: CareLink
+agents:
+- name: Dialogue Orchestrator Agent
+  type: LLM Agent
+  role: Single conversational interface for all user interactions.
+  inputs:
+  - Transcribed text
+  - Emotion signals
+  - Intents and facts
+  - Physical state summary
+  - Mind & behavior state summary
+  - Coach scripts
+  - Safety prompts
+  outputs:
+  - User responses
+  - Memory write calls
+  - Coach triggers
+  - Safety triggers
+- name: Global Safety & Escalation Agent
+  type: Rule + LLM Agent
+  role: Central emergency decision-maker.
+  inputs:
+  - physical_alert_stream
+  - mind_behavior_alert_stream
+  - Safety profile
+  - Incident history
+  outputs:
+  - Commands to Dialogue Agent
+  - Notifications to caregivers/services
+  - Audit logs
+- name: Coach & Planning Agent
+  type: LLM/Logic Agent
+  role: Multi-domain long-term coaching and planning.
+  inputs:
+  - Physical state summary
+  - Mind & behavior state summary
+  - User goals and preferences
+  - Content library items
+  outputs:
+  - Daily/weekly plans
+  - Scheduled tasks
+  - Dialogue scripts
+- name: Memory Manager
+  type: Hybrid Agent/Service
+  role: Manages CareLink memory about the user.
+  inputs:
+  - Candidate memories
+  - Conversation logs
+  - Metadata
+  outputs:
+  - Dialogue memories
+  - Coach memories
+  - Safety profile
+  - Daily digests
+  - Compressed long-term memory
+engines:
+- name: Physical Health Engine
+  type: Domain Engine
+  role: Physiological and sensor analytics.
+  apis:
+  - get_physical_state_summary
+  - get_trends
+  - physical_alert_stream
+- name: Mind & Behavior Engine
+  type: Domain Engine
+  role: Emotion, cognition, social connectedness, routine/self-care analytics.
+  apis:
+  - get_mind_behavior_state_summary
+  - mind_behavior_alert_stream
+  - get_mood_trend
+  - get_cognitive_history
+  - get_social_pattern
+  - get_routine_adherence
+services:
+- STT Service
+- TTS Service
+- NLU / Fact Extractor
+- Raw Emotion Analyzer
+- Refined Emotion Classifier
+- Tone Selector
+- Memory Store
+- User Twin Store
+- Event Bus
+- Scheduling & Notifications
+- Permissions & Privacy
+- Logging & Audit
+- Content & Exercise Library
+- Reporting & Dashboards

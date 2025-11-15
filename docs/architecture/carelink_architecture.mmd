@@ -1,0 +1,66 @@
+%% CareLink Architecture Diagram (Mermaid)
+
+flowchart TD
+
+  subgraph Engines
+    PH[Physical Health Engine]
+    MB[Mind & Behavior Engine]
+  end
+
+  subgraph Agents
+    DO[Dialogue Orchestrator Agent]
+    SA[Global Safety & Escalation Agent]
+    CA[Coach & Planning Agent]
+    MM[Memory Manager]
+  end
+
+  subgraph Services
+    STT[STT Service]
+    TTS[TTS Service]
+    NLU[NLU / Fact Extractor]
+    EMO[Emotion Services]
+    TONE[Tone Selector]
+    EV[Event Bus]
+    SCHED[Scheduling & Notifications]
+    MEM[Memory Store]
+    UTWIN[User Twin Store]
+    PERM[Permissions & Privacy]
+    LOG[Logging & Audit]
+    LIB[Content & Exercise Library]
+  end
+
+  User(((User))):::human
+
+  User --> STT --> DO
+  DO --> TTS --> User
+
+  DO --> NLU
+  DO --> EMO
+  DO --> TONE
+
+  DO --> PH
+  DO --> MB
+  PH --> EV
+  MB --> EV
+
+  EV --> SA
+  EV --> CA
+
+  CA --> PH
+  CA --> MB
+  CA --> SCHED
+  CA --> LIB
+
+  DO --> MM
+  SA --> MM
+  CA --> MM
+
+  MM --> MEM
+  MM --> UTWIN
+
+  SA --> SCHED
+  SA --> LOG
+  DO --> LOG
+  CA --> LOG
+
+  classDef human fill:#fce,stroke:#333,stroke-width:1px;

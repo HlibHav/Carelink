@@ -31,12 +31,7 @@ export const config = {
       planner: process.env.OPENAI_PLANNER_MODEL ?? 'gpt-4o-mini',
       emotion: process.env.OPENAI_EMOTION_MODEL ?? 'gpt-4o-mini',
       transcription: process.env.OPENAI_TRANSCRIPTION_MODEL ?? 'gpt-4o-mini-transcribe',
-      embedding: process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
     },
-  },
-  firestore: {
-    projectId: process.env.GOOGLE_PROJECT_ID,
-    emulatorHost: process.env.FIRESTORE_EMULATOR_HOST,
   },
   elevenLabs: {
     apiKey: process.env.ELEVENLABS_API_KEY ?? '',
@@ -48,5 +43,13 @@ export const config = {
       process.env.VITE_ELEVENLABS_AGENT_ID ??
       '',
     debug: (process.env.ELEVENLABS_DEBUG ?? '').toLowerCase() === 'true',
+  },
+  services: {
+    physicalEngineUrl:
+      process.env.PHYSICAL_ENGINE_URL?.replace(/\/$/, '') ?? 'http://localhost:4101',
+    mindBehaviorEngineUrl:
+      process.env.MIND_BEHAVIOR_ENGINE_URL?.replace(/\/$/, '') ?? 'http://localhost:4102',
+    memoryManagerUrl:
+      process.env.MEMORY_MANAGER_URL?.replace(/\/$/, '') ?? 'http://localhost:4103',
   },
 };
