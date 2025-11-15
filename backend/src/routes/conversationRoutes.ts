@@ -74,7 +74,7 @@ const userUtteranceSchema = z.object({
 conversationRouter.post(
   '/user-utterance',
   upload.single('audio'),
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const sessionId = req.get('x-session-id');
     if (!sessionId) {
       throw errors.badRequest('Missing X-Session-Id header');
@@ -111,18 +111,24 @@ conversationRouter.post(
       throw errors.badRequest('Audio duration exceeds 40 seconds');
     }
 
-    // TODO: process req.file buffer when hooking up Whisper.
     if (!req.file && !parsed.data.transcript) {
       throw errors.badRequest('Either audio or transcript must be provided.');
     }
 
-    const response = utteranceService.acceptUtterance({
+    const response = await utteranceService.acceptUtterance({
       sessionId,
+      userId: req.userId!,
       transcript: parsed.data.transcript,
       durationMs: parsed.data.metadata?.durationMs,
+      audioBuffer: req.file?.buffer,
+      locale: session.locale,
+      metadata: {
+        ...parsed.data.metadata,
+        mimeType: req.file?.mimetype,
+      },
     });
 
-    res.status(202).json(response);
+    res.status(200).json(response);
   }),
 );
 

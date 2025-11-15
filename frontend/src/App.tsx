@@ -224,7 +224,7 @@ function App() {
               isLoading={isSending}
               onSubmit={handleUtterance}
             />
-            <EmbeddedAgentPanel />
+            <EmbeddedAgentPanel auth={auth} />
           </section>
 
           <aside className="space-y-6 lg:col-span-2">

@@ -31,6 +31,7 @@ This repo contains **project documentation** you can drop into Cursor or any IDE
   - `requirements.md` – functional & non-functional requirements
   - `technical-design.md` – detailed design decisions
   - `tools-and-apis.md` – external services and how to use them
+  - `elevenlabs-agent-setup.md` – ElevenLabs agent creation + embedding workflow
   - `memory.md` – Firestore schema + semantic memory (RAG)
   - `observability-phoenix.md` – logging and tracing LLM flows with Phoenix
   - `evals.md` – evaluation strategy for the agent
