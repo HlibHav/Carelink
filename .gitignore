@@ -15,8 +15,8 @@ dist/
 **/.env
 **/.env.bak
 
-# Service account credentials
-*-*.json
+# Service account credentials (Google Cloud format: project-id-keyid.json)
+*-*-*.json
 **/*-*-*.json
 
 # IDE
