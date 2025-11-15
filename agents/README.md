@@ -5,7 +5,7 @@ This folder will host the autonomous LLM-driven components described in `docs/ar
 | Folder | Responsibility |
 | --- | --- |
 | `dialogue/` | Dialogue Orchestrator agent that mediates all user interactions. |
-| `coach/` | Long-horizon Coach & Planning agent. |
+| `coach/` | Long-horizon Coach & Planning agent (subscribes to `coach.trigger.v1`, publishes plans). |
 | `safety/` | Global Safety & Escalation agent. |
 | `memory-nightly/` | Nighttime mode of the Memory Manager for summarization/compression. |
 
