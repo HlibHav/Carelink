@@ -47,6 +47,21 @@ export const createDialogueClientTools = (options: DialogueToolOptions) => {
       throw new Error('Dialogue orchestrator tool was invoked without a transcript.');
     }
 
+    const toolCallId = `tool_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const startTime = Date.now();
+
+    console.log('[ElevenLabs Client Tool] Tool call initiated', {
+      toolCallId,
+      toolName: DIALOGUE_TOOL_NAME,
+      transcript: transcript.slice(0, 100),
+      parameters: {
+        session_id: resolveString(parameters.session_id),
+        user_id: resolveString(parameters.user_id),
+        locale: resolveString(parameters.locale),
+      },
+      timestamp: new Date().toISOString(),
+    });
+
     options.onBeforeCall?.(parameters);
 
     const payload: ElevenLabsDialogueTurnRequest = {
@@ -59,12 +74,39 @@ export const createDialogueClientTools = (options: DialogueToolOptions) => {
       userId: resolveString(parameters.user_id) ?? resolveString(parameters.userId) ?? options.defaultUserId,
       metadata: {
         elevenLabsToolCall: parameters,
+        toolCallId,
       },
     };
 
-    const response = await sendElevenLabsDialogueTurn(payload, options.auth);
-    options.onResult?.(response, parameters);
-    return response.text;
+    try {
+      const response = await sendElevenLabsDialogueTurn(payload, options.auth);
+      const duration = Date.now() - startTime;
+
+      console.log('[ElevenLabs Client Tool] Backend response received', {
+        toolCallId,
+        turnId: response.turnId,
+        durationMs: duration,
+        responseLength: response.text?.length ?? 0,
+        emotion: response.emotion?.primary,
+        mode: response.plan?.mode,
+        timestamp: new Date().toISOString(),
+      });
+
+      options.onResult?.(response, parameters);
+      return response.text;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      console.error('[ElevenLabs Client Tool] Backend request failed', {
+        toolCallId,
+        error: errorMessage,
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+      });
+
+      throw error;
+    }
   };
 
   return {

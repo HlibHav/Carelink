@@ -4,14 +4,25 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
+import type { Playbook } from '@carelink/memory-storage';
+import { getFirestore } from '@carelink/memory-storage';
+
 import { config } from './config.js';
-import { getFirestore } from './firestoreClient.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
-const db = getFirestore();
+const db = getFirestore({
+  projectId: config.firestore.projectId,
+  emulatorHost: config.firestore.emulatorHost,
+});
+
+// ============================================================================
+// DAYTIME OPERATIONS (Real-time, low-latency endpoints)
+// ============================================================================
+// These endpoints handle immediate requests during active conversations.
+// They prioritize speed and availability over batch processing.
 
 type MemoryCategory = 'facts' | 'goals' | 'gratitude' | 'safety' | 'routine';
 
@@ -133,6 +144,115 @@ async function fetchLastConversationSnapshot(userId: string) {
   };
 }
 
+/**
+ * Load user's current playbook from Firestore
+ * Returns null if no playbook exists (will use default behavior)
+ */
+async function loadPlaybook(userId: string): Promise<Playbook | null> {
+  try {
+    const userRef = db.collection('users').doc(userId);
+    const playbookRef = userRef.collection('playbooks').doc('default');
+    const playbookDoc = await playbookRef.get();
+
+    if (!playbookDoc.exists) {
+      return null;
+    }
+
+    const data = playbookDoc.data()!;
+    return {
+      playbookId: data.playbookId || 'default',
+      userId,
+      sections: {
+        retrieval_strategies: data.sections?.retrieval_strategies || [],
+        context_engineering_rules: data.sections?.context_engineering_rules || [],
+        common_mistakes: data.sections?.common_mistakes || [],
+      },
+      metadata: {
+        lastUpdated: data.metadata?.lastUpdated || new Date().toISOString(),
+        version: data.metadata?.version || 1,
+      },
+    };
+  } catch (error) {
+    console.error(`Error loading playbook for user ${userId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Apply retrieval strategies from playbook to filter/prioritize memories
+ */
+function applyRetrievalStrategies(
+  memories: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>,
+  playbook: Playbook | null,
+  context: { emotion?: Record<string, unknown>; mode?: string },
+): Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> {
+  if (!playbook || playbook.sections.retrieval_strategies.length === 0) {
+    return memories;
+  }
+
+  // Find applicable strategies based on context
+  const applicableStrategies = playbook.sections.retrieval_strategies.filter((strategy) => {
+    if (!strategy.condition) return false;
+    // Simple condition matching (in production, use a proper condition evaluator)
+    const emotionMatch = !context.emotion || strategy.condition.includes(`emotion=${context.emotion.primary}`);
+    const modeMatch = !context.mode || strategy.condition.includes(`mode=${context.mode}`);
+    return emotionMatch && modeMatch;
+  });
+
+  // Apply strategies (for now, just return filtered memories)
+  // In production, strategies would modify the retrieval logic more sophisticatedly
+  let filtered = memories;
+
+  for (const strategy of applicableStrategies) {
+    // Example: If strategy mentions "last 7 days", filter by date
+    if (strategy.strategy.includes('last 7 days')) {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      filtered = filtered.filter((m) => new Date(m.createdAt) >= sevenDaysAgo);
+    }
+
+    // Example: If strategy mentions "gratitude", prioritize gratitude entries
+    if (strategy.strategy.toLowerCase().includes('gratitude')) {
+      filtered = [
+        ...filtered.filter((m) => m.category === 'gratitude'),
+        ...filtered.filter((m) => m.category !== 'gratitude'),
+      ];
+    }
+  }
+
+  return filtered;
+}
+
+/**
+ * Apply context engineering rules from playbook
+ */
+function applyContextEngineeringRules(
+  memories: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>,
+  playbook: Playbook | null,
+  query: string,
+): Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> {
+  if (!playbook || playbook.sections.context_engineering_rules.length === 0) {
+    return memories;
+  }
+
+  // Find applicable rules based on query
+  const applicableRules = playbook.sections.context_engineering_rules.filter((rule) => {
+    if (!rule.condition) return false;
+    // Simple condition matching (in production, use a proper condition evaluator)
+    return rule.condition.split(' OR ').some((cond) => {
+      const normalizedCond = cond.toLowerCase().trim();
+      const normalizedQuery = query.toLowerCase();
+      return normalizedQuery.includes(normalizedCond.replace(/['"]/g, ''));
+    });
+  });
+
+  // Apply rules (for now, just return memories)
+  // In production, rules would modify filtering/prioritization logic
+  return memories;
+}
+
+// DAYTIME: Store candidate memories (facts, goals, gratitude, etc.)
+// Called immediately after conversation turns to persist extracted memories
 app.post('/memory/:userId/store-candidate', async (req, res) => {
   const parsed = storeCandidateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -157,6 +277,8 @@ app.post('/memory/:userId/store-candidate', async (req, res) => {
   res.status(201).json({ stored: parsed.data.items.length });
 });
 
+// DAYTIME: Store conversation turns
+// Called in real-time as each turn completes to maintain conversation state
 app.post('/memory/:userId/turns', async (req, res) => {
   const parsed = saveTurnSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -190,6 +312,9 @@ app.post('/memory/:userId/turns', async (req, res) => {
   res.status(201).json({ stored: true });
 });
 
+// DAYTIME: Retrieve memories for dialogue orchestration
+// Called during conversation flow to provide context to dialogue agents
+// Now applies ACE playbook strategies and rules
 app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
   const parsed = retrieveDialogueSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
@@ -199,15 +324,33 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
 
   const query = parsed.data.query.trim().toLowerCase();
 
-  const [facts, goals, gratitude, profile, lastConversation] = await Promise.all([
+  // Load playbook and context
+  const [facts, goals, gratitude, profile, lastConversation, playbook] = await Promise.all([
     fetchRecentEntries(req.params.userId, 'facts'),
     fetchRecentEntries(req.params.userId, 'goals'),
     fetchRecentEntries(req.params.userId, 'gratitude'),
     fetchProfile(req.params.userId),
     fetchLastConversationSnapshot(req.params.userId),
+    loadPlaybook(req.params.userId),
   ]);
 
-  const filterByQuery = (items: typeof facts) =>
+  // Apply retrieval strategies from playbook
+  const context = {
+    emotion: lastConversation?.lastEmotion as Record<string, unknown> | undefined,
+    mode: lastConversation?.lastMode as string | undefined,
+  };
+
+  let filteredFacts = applyRetrievalStrategies(facts as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, context);
+  let filteredGoals = applyRetrievalStrategies(goals as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, context);
+  let filteredGratitude = applyRetrievalStrategies(gratitude as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, context);
+
+  // Apply context engineering rules
+  filteredFacts = applyContextEngineeringRules(filteredFacts as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, query);
+  filteredGoals = applyContextEngineeringRules(filteredGoals as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, query);
+  filteredGratitude = applyContextEngineeringRules(filteredGratitude as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, query);
+
+  // Apply query-based filtering
+  const filterByQuery = (items: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>) =>
     query.length
       ? items
           .filter((item) => item.text.toLowerCase().includes(query))
@@ -217,14 +360,17 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
   res.json({
     userId: req.params.userId,
     profile: profile ?? undefined,
-    facts: filterByQuery(facts),
-    goals: filterByQuery(goals),
-    gratitude: filterByQuery(gratitude).slice(0, 3),
+    facts: filterByQuery(filteredFacts),
+    goals: filterByQuery(filteredGoals),
+    gratitude: filterByQuery(filteredGratitude).slice(0, 3),
     lastMode: lastConversation?.lastMode ?? null,
     lastEmotion: lastConversation?.lastEmotion ?? null,
+    playbookVersion: playbook?.metadata.version ?? null, // Include playbook version for tracking
   });
 });
 
+// DAYTIME: Retrieve memories for coach agent
+// Called when coach agent needs goal and open loop context
 app.get('/memory/:userId/retrieve-for-coach', async (req, res) => {
   const goals = await fetchRecentEntries(req.params.userId, 'goals', 100);
   res.json({
@@ -234,6 +380,8 @@ app.get('/memory/:userId/retrieve-for-coach', async (req, res) => {
   });
 });
 
+// DAYTIME: Retrieve safety profile
+// Called by safety agent to get escalation contacts and risk assessment
 app.get('/memory/:userId/safety-profile', async (req, res) => {
   const profile = await fetchSafetyProfile(req.params.userId);
   res.json({
@@ -242,6 +390,14 @@ app.get('/memory/:userId/safety-profile', async (req, res) => {
   });
 });
 
+// ============================================================================
+// NIGHTLY OPERATIONS (Batch processing, can be moved to memory-nightly agent)
+// ============================================================================
+// These endpoints handle batch operations that can tolerate higher latency.
+// They will eventually be moved to the memory-nightly agent service.
+
+// NIGHTLY: Generate daily digest (currently implemented here, will move to nightly agent)
+// Called nightly to summarize the day's conversations
 app.post('/memory/:userId/daily-digest', async (req, res) => {
   const parsed = digestSchema.safeParse(req.body ?? {});
   if (!parsed.success && req.body) {
@@ -283,10 +439,13 @@ app.post('/memory/:userId/daily-digest', async (req, res) => {
   });
 });
 
+// NIGHTLY: Compress old memories (currently a stub, will be implemented in nightly agent)
+// Called periodically to compress and consolidate old memories
 app.post('/memory/:userId/compress', async (_req, res) => {
   res.json({ status: 'queued', jobId: `compress_${randomUUID()}` });
 });
 
+// Health check endpoint
 app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok', service: 'memory-manager', time: new Date().toISOString() });
 });

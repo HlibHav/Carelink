@@ -1,51 +1,24 @@
-<<<<<<<< HEAD:agents/dialogue/src/orchestrator/types.ts
-import type { MindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
-import type { PhysicalStateSummary } from '../clients/physicalEngineClient.js';
-import type { MemoryEntry } from '../clients/memoryManagerClient.js';
-========
 import type { MemoryEntry } from '../clients/memoryManagerClient.js';
 import type { MindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
 import type { PhysicalStateSummary } from '../clients/physicalEngineClient.js';
->>>>>>>> origin/main:apps/gateway/src/orchestrator/types.ts
+import type {
+  CoachResponse,
+  DialogueAgentRequest,
+  DialogueAgentResponse,
+  EmotionState,
+  ListenerResult,
+  ModePlan,
+} from '@carelink/conversation-types';
 
-export interface ListenerResult {
-  transcript: string;
-  summary: string;
-  facts: Array<{ text: string; type?: string }>;
-  intents: string[];
-  emotions: {
-    primary: string;
-    intensity: 'low' | 'medium' | 'high';
-    energy: 'low' | 'medium' | 'high';
-  };
-}
+export type DialogueAgentInput = DialogueAgentRequest;
+export type DialogueAgentResult = DialogueAgentResponse;
 
-export interface EmotionState {
-  primary: string;
-  intensity: 'low' | 'medium' | 'high';
-  energy: 'low' | 'medium' | 'high';
-  socialNeed: 'wants_connection' | 'wants_space' | 'wants_guidance' | 'unknown';
-  reasoning?: string;
-}
-
-export interface ModePlan {
-  mode: 'support' | 'coach' | 'gratitude' | 'game' | 'reminder';
-  goal:
-    | 'reflect_feelings'
-    | 'clarify_goal'
-    | 'suggest_tiny_step'
-    | 'celebrate_progress'
-    | 'ask_gratitude'
-    | 'lighten_mood'
-    | 'check_in_on_goal';
-  coachIntensity: 'low' | 'medium' | 'high';
-}
-
-export interface CoachResponse {
-  text: string;
-  actions?: Array<{ type: string; text: string }>;
-  reasoning?: string;
-}
+export type {
+  CoachResponse,
+  EmotionState,
+  ListenerResult,
+  ModePlan,
+} from '@carelink/conversation-types';
 
 export interface ConversationContext {
   profile?: Record<string, unknown>;
@@ -56,25 +29,4 @@ export interface ConversationContext {
   lastEmotion?: EmotionState | null;
   physicalState?: PhysicalStateSummary;
   mindBehaviorState?: MindBehaviorState;
-}
-
-<<<<<<<< HEAD:agents/dialogue/src/orchestrator/types.ts
-export interface DialogueAgentInput {
-========
-export interface OrchestratorInput {
->>>>>>>> origin/main:apps/gateway/src/orchestrator/types.ts
-  userId: string;
-  sessionId: string;
-  transcript: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface DialogueAgentResult {
-  turnId: string;
-  transcript: string;
-  listener: ListenerResult;
-  emotion: EmotionState;
-  plan: ModePlan;
-  coach: CoachResponse;
-  tone: string;
 }

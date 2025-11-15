@@ -106,6 +106,15 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
   const [canSendFeedback, setCanSendFeedback] = useState(false);
 
   const conversationRef = useRef<ConversationInstance | null>(null);
+
+  const appendMessage = useCallback((entry: Omit<AgentMessage, 'id'>) => {
+    const text = entry.text?.trim();
+    if (!text) {
+      return;
+    }
+    setMessages((prev) => [...prev, { ...entry, id: uuid() }]);
+  }, []);
+
   const dialogueClientTools = useMemo(
     () =>
       createDialogueClientTools({
@@ -170,14 +179,6 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       cancelled = true;
     };
   }, [auth]);
-
-  const appendMessage = useCallback((entry: Omit<AgentMessage, 'id'>) => {
-    const text = entry.text?.trim();
-    if (!text) {
-      return;
-    }
-    setMessages((prev) => [...prev, { ...entry, id: uuid() }]);
-  }, []);
 
   const handleIncomingEvent = useCallback(
     (event: any) => {

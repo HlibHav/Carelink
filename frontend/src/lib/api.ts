@@ -123,5 +123,38 @@ export function sendElevenLabsDialogueTurn(
   payload: ElevenLabsDialogueTurnRequest,
   auth: AuthConfig,
 ): Promise<ElevenLabsDialogueTurnResponse> {
-  return request('/elevenlabs/dialogue-turn', { method: 'POST', body: JSON.stringify(payload) }, auth);
+  const requestId = payload.metadata?.toolCallId as string | undefined;
+  const startTime = Date.now();
+
+  console.log('[API] Sending dialogue turn request', {
+    requestId,
+    endpoint: '/elevenlabs/dialogue-turn',
+    transcriptLength: payload.transcript?.length ?? 0,
+    sessionId: payload.sessionId,
+    userId: payload.userId,
+    timestamp: new Date().toISOString(),
+  });
+
+  return request('/elevenlabs/dialogue-turn', { method: 'POST', body: JSON.stringify(payload) }, auth)
+    .then((response) => {
+      const duration = Date.now() - startTime;
+      console.log('[API] Dialogue turn response received', {
+        requestId,
+        turnId: response.turnId,
+        status: 'success',
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+      });
+      return response;
+    })
+    .catch((error) => {
+      const duration = Date.now() - startTime;
+      console.error('[API] Dialogue turn request failed', {
+        requestId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        durationMs: duration,
+        timestamp: new Date().toISOString(),
+      });
+      throw error;
+    });
 }

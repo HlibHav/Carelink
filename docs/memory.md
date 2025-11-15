@@ -267,3 +267,45 @@ Simple RAG returns top-k by semantic similarity, but doesn't consider:
 
 The orchestrator uses both when constructing LLM prompts.
 
+---
+
+## ACE Playbooks
+
+The Memory Manager uses **ACE (Agentic Context Engineering)** playbooks to evolve retrieval strategies and context engineering rules over time. Playbooks are stored in Firestore at `users/{userId}/playbooks/{playbookId}`.
+
+### Playbook Structure
+
+Playbooks contain three main sections:
+
+1. **Retrieval Strategies**: Condition-based rules for what memories to retrieve
+   - Example: "emotion=sadness AND mode=support → prioritize gratitude entries from last 7 days"
+   - Each strategy has helpful/harmful scores that track effectiveness
+
+2. **Context Engineering Rules**: Rules for filtering and prioritizing retrieved memories
+   - Example: "When user mentions family, include related facts even if similarity is lower"
+   - Applied after initial retrieval to refine context
+
+3. **Common Mistakes**: Documented mistakes and their corrections
+   - Prevents repetition of errors identified during reflection
+
+### Playbook Evolution (Nightly)
+
+The nightly agent runs an ACE cycle to evolve playbooks:
+
+1. **Generation**: Analyzes conversation patterns to generate candidate strategies/rules
+2. **Reflection**: Analyzes execution feedback to identify what went wrong/right
+3. **Curation**: Incrementally updates playbooks based on reflection (prevents context collapse)
+
+### Usage in Daytime Operations
+
+During real-time retrieval (`/retrieve-for-dialogue`), the daytime service:
+
+1. Loads the user's current playbook
+2. Applies retrieval strategies based on current context (emotion, mode)
+3. Applies context engineering rules based on query
+4. Returns filtered and prioritized memories
+
+If no playbook exists, the service falls back to default behavior (simple recency-based retrieval).
+
+See `docs/architecture/memory-nightly-contract.md` for detailed API specifications.
+

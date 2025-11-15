@@ -85,22 +85,49 @@
 ## 4. Memory Manager (Hybrid Agent/Service)
 
 **Type:** Hybrid (service by day, agent by night)  
-**Role:** Owns CareLink’s memory about each user.
+**Role:** Owns CareLink's memory about each user.
 
-### Responsibilities
+### Daytime Operations (services/memory-manager)
+Real-time, low-latency service for active conversations:
+
 - Store and categorize candidate memories (facts, events, emotional episodes, goals).
 - Provide focused memory retrieval for dialogue, coaching, and safety.
+- Health checks and monitoring.
+
+### Nightly Operations (agents/memory-nightly)
+Batch processing agent implementing ACE (Agentic Context Engineering):
+
 - Generate daily digests from conversation logs.
 - Compress and consolidate short-term memories into long-term representations.
+- **ACE Playbook Evolution**: Generation → Reflection → Curation cycle to evolve retrieval strategies and context engineering rules.
 
-### Inputs
+### Inputs (Daytime)
 - Candidate memories from Dialogue Orchestrator Agent and other modules.
 - Conversation and interaction logs.
 - Metadata such as importance, type, and domain.
 
-### Outputs
+### Outputs (Daytime)
 - `retrieve_for_dialogue(user_id, context)` result sets.
 - `retrieve_for_coach(user_id)` structured summaries.
 - `get_safety_profile(user_id)` safety-focused slice of memory.
-- `daily_digest(user_id, date)` documents.
-- Periodic compressed long-term memory updates.
+
+### Inputs (Nightly)
+- User ID, date range for analysis.
+- Conversation logs with execution traces.
+- Retrieval effectiveness metrics (which memories were used, which weren't).
+- Explicit feedback signals (if available).
+- Current playbook state.
+
+### Outputs (Nightly)
+- Updated playbook entries (structured JSON) stored in `users/{userId}/playbooks/{playbookId}`.
+- Compression artifacts.
+- Daily digest documents.
+
+### ACE Playbook Structure
+Playbooks evolve through a generation-reflection-curation cycle:
+
+- **Retrieval Strategies**: Condition-based rules for what memories to retrieve (e.g., "emotion=sadness AND mode=support → prioritize gratitude entries from last 7 days").
+- **Context Engineering Rules**: Rules for filtering and prioritizing retrieved memories (e.g., "When user mentions family, include related facts even if similarity is lower").
+- **Common Mistakes**: Documented mistakes and their corrections to prevent repetition.
+
+See `memory-nightly-contract.md` for detailed API specifications.
