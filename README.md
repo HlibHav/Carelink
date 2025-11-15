@@ -48,6 +48,7 @@ Core pillars:
 - `services/`
   - `memory-manager/` – HTTP API matching CareLink’s memory contracts.
   - `event-bus/` – SSE relay for publishing/consuming the architecture contracts.
+  - `scheduling/` – deterministic scheduling and notification stub.
 <<<<<<< HEAD
   - `event-bus/` – SSE relay for publishing/consuming the architecture contracts.
 =======
