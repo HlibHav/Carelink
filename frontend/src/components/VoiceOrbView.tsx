@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getElevenLabsAgentConfig } from '../lib/api.js';
 import type { AuthConfig } from '../lib/types.js';
+import { Aurora } from './Aurora.js';
 
 const locationOrigins: Record<string, string | undefined> = {
   us: 'https://api.elevenlabs.io',
@@ -31,22 +32,24 @@ const resolveConnectionType = () =>
 
 const orbPalettes = {
   disconnected: {
-    bg: 'bg-midnight-400/30',
-    shadow: 'shadow-[0_0_40px_rgba(44,62,80,0.35)]',
+    bg: 'bg-gradient-to-br from-[#b9ffe1]/30 to-[#c8ccff]/30',
+    shadow: 'shadow-[0_0_40px_rgba(178,215,196,0.35)]',
   },
   connecting: {
-    bg: 'bg-midnight-200/70',
-    shadow: 'shadow-[0_0_45px_rgba(52,152,219,0.4)]',
+    bg: 'bg-gradient-to-br from-[#69f0ae]/70 via-[#fff59d]/60 to-[#c4b5fd]/60',
+    shadow: 'shadow-[0_0_60px_rgba(100,255,218,0.45)]',
   },
   connected: {
-    bg: 'bg-gradient-to-br from-forest/80 to-blush/70',
-    shadow: 'shadow-[0_0_70px_rgba(255,143,163,0.55)]',
+    bg: 'bg-gradient-to-br from-[#34d399]/90 via-[#fde047]/85 to-[#8b5cf6]/90',
+    shadow: 'shadow-[0_0_85px_rgba(139,92,246,0.65)]',
   },
   error: {
-    bg: 'bg-blush/80',
-    shadow: 'shadow-[0_0_60px_rgba(239,68,68,0.55)]',
+    bg: 'bg-[#f87171]/80',
+    shadow: 'shadow-[0_0_60px_rgba(248,113,113,0.55)]',
   },
 };
+
+const auroraColors = ['#34d399', '#fde047', '#8b5cf6'];
 
 type ConversationInstance = Awaited<ReturnType<typeof Conversation.startSession>>;
 
@@ -236,34 +239,41 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
 
   const orbState = useMemo(() => {
     if (error) {
-      return { ...orbPalettes.error, label: 'Error', scale: 'scale-95' };
+      return { ...orbPalettes.error, label: 'Error', scale: 'scale-95', animation: 'animate-orbPulse' };
     }
     if (status === 'connecting') {
-      return { ...orbPalettes.connecting, label: 'Connecting', scale: 'animate-pulse scale-95' };
+      return {
+        ...orbPalettes.connecting,
+        label: 'Connecting',
+        scale: 'scale-95',
+        animation: 'animate-orbPulse',
+      };
     }
     if (status === 'connected') {
       return {
         ...orbPalettes.connected,
         label: isSpeaking ? 'Speaking' : 'Listening',
-        scale: isSpeaking ? 'scale-110' : 'scale-100',
+        scale: isSpeaking ? 'scale-105' : 'scale-100',
+        animation: isSpeaking ? 'animate-orbSpeak' : 'animate-orbPulse',
       };
     }
-    return { ...orbPalettes.disconnected, label: 'Idle', scale: 'scale-90' };
+    return { ...orbPalettes.disconnected, label: 'Idle', scale: 'scale-90', animation: 'animate-orbPulse' };
   }, [error, isSpeaking, status]);
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-midnight-900 via-midnight-800 to-midnight-900 px-6 py-12 text-white">
-      <div className="text-center">
-        <p className="text-xs uppercase tracking-[0.4em] text-white/50">ElevenLabs Agent</p>
-        <h1 className="mt-2 text-3xl font-semibold">LifeCompanion Orb</h1>
-        <p className="mt-3 text-sm text-white/70">
-          {error
-            ? 'We hit a snag starting the conversation. Please check your agent credentials.'
-            : 'The orb pulses when the agent speaks and glows softly while listening.'}
-        </p>
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#050318] px-6 py-12 text-white">
+      <Aurora
+        className="pointer-events-none absolute inset-0 opacity-80"
+        colorStops={auroraColors}
+        blend={0.55}
+        amplitude={0.9}
+        speed={0.45}
+      />
+      <div className="text-center relative z-10">
+        <h1 className="font-display text-4xl font-semibold tracking-wide text-white">Carelink</h1>
         <div className="mt-10 flex items-center justify-center">
           <div
-            className={`h-52 w-52 rounded-full transition-all duration-500 ${orbState.bg} ${orbState.shadow} ${orbState.scale}`}
+            className={`h-52 w-52 rounded-full transition-all duration-500 ${orbState.bg} ${orbState.shadow} ${orbState.scale} ${orbState.animation}`}
           >
             <div className="relative h-full w-full">
               <div className="absolute inset-0 rounded-full bg-white/5" />
