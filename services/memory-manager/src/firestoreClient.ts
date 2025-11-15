@@ -1,16 +1,15 @@
 import { Firestore } from '@google-cloud/firestore';
 
-import { config } from '../config.js';
+import { config } from './config.js';
 
 let cachedDb: Firestore | null = null;
 
 export function getFirestore(): Firestore {
   if (!cachedDb) {
-    const projectId = config.firestore.projectId;
     cachedDb = new Firestore(
-      projectId
+      config.firestore.projectId
         ? {
-            projectId,
+            projectId: config.firestore.projectId,
           }
         : undefined,
     );
@@ -22,5 +21,6 @@ export function getFirestore(): Firestore {
       });
     }
   }
+
   return cachedDb;
 }

@@ -1,12 +1,13 @@
-# LifeCompanion Backend
+# CareLink Gateway (Dialogue API)
 
-TypeScript/Express scaffolding for the voice-first LifeCompanion service described in `/docs`. It exposes the core REST endpoints so the frontend and orchestration layers can start integrating while AI agents and health integrations are built.
+This service is now the **edge gateway** for CareLink.  
+It authenticates public clients, handles media uploads, and forwards requests to the internal engines/services that implement the CareLink architecture.
 
 ## Getting Started
 
 1. **Install dependencies**
    ```bash
-   cd backend
+   cd apps/gateway
    npm install
    ```
 2. **Run in development mode**
@@ -17,10 +18,11 @@ TypeScript/Express scaffolding for the voice-first LifeCompanion service describ
    - `PORT` (default `8080`)
    - `ALLOWED_ORIGINS` – optional CSV for CORS (defaults to `5173` & `5174`)
    - `OPENAI_API_KEY` plus optional `OPENAI_*_MODEL` overrides for chat/emotion/planner/embeddings/Whisper
-   - `GOOGLE_PROJECT_ID` and application credentials for Firestore
-   - `FIRESTORE_EMULATOR_HOST` if you prefer running against the emulator (`localhost:8080`)
    - `PHOENIX_ENDPOINT` – placeholder for observability client
    - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – configure the voice agent
+   - `PHYSICAL_ENGINE_URL` – base URL of `engines/physical`
+   - `MIND_BEHAVIOR_ENGINE_URL` – base URL of `engines/mind-behavior`
+   - `MEMORY_MANAGER_URL` – base URL of `services/memory-manager`
 
 Create a `.env` file if you want to run locally (trim to what you need):
 
@@ -30,12 +32,12 @@ ALLOWED_ORIGINS=http://localhost:4000
 OPENAI_API_KEY=sk-your-key
 OPENAI_CHAT_MODEL=gpt-4o-mini
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-GOOGLE_PROJECT_ID=lifecompanion-dev
-# FIRESTORE_EMULATOR_HOST=localhost:8080
 ELEVENLABS_API_KEY=your-xi-api-key
 ELEVENLABS_VOICE_ID=your-voice-id
 ELEVENLABS_MODEL_ID=eleven_flash_v2
+PHYSICAL_ENGINE_URL=http://localhost:4101
+MIND_BEHAVIOR_ENGINE_URL=http://localhost:4102
+MEMORY_MANAGER_URL=http://localhost:4103
 ```
 
 ## API Documentation
@@ -60,13 +62,14 @@ All `/api/*` routes require:
 
 ## Architecture Highlights
 
-- **Orchestrator Pipeline**: `/api/user-utterance` now executes the full pipeline (Whisper STT → Listener & Emotion agents → Planner → Coach → Tone selector → ElevenLabs TTS) and returns the generated reply + base64 audio.
-- **OpenAI Integration**: configurable models for LLM, planner, emotion classifier, embeddings, and transcription.
-- **Memory & RAG**: Firestore stores user turns plus extracted facts/goals/gratitude with embeddings; a lightweight cosine RAG feeds context into the agents.
-- **Voice Output**: The official ElevenLabs API produces natural audio aligned with the planner’s selected tone.
+- **Gateway-only responsibilities**: Authentication, payload validation, orchestration of downstream services, session bookkeeping.
+- **Externalized engines**: Physical state + Mind & Behavior analytics now live in `engines/*` and are invoked via HTTP.
+- **Memory Manager API**: All memory read/write is proxied through `services/memory-manager`, mirroring the contracts in `docs/architecture/carelink_system_spec_cursor_ready.md`.
+- **Voice Output**: The gateway still integrates with ElevenLabs for low-latency TTS, while tone selection remains an agent skill.
 
 ## Next Steps
 
-- Emit Phoenix spans for every pipeline step.
+- Emit Phoenix spans covering every engine/service round-trip.
+- Move Dialogue orchestrator prompts + reasoning into `agents/dialogue` and call them from the gateway.
 - Replace the in-memory session store with Firestore or Redis.
-- Implement SSE/WebSocket streaming so clients receive incremental transcripts/tts chunks.
+- Implement SSE/WebSocket streaming so clients receive incremental transcripts/TTS chunks.

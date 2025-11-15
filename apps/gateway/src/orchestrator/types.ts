@@ -1,3 +1,7 @@
+import type { MindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
+import type { PhysicalStateSummary } from '../clients/physicalEngineClient.js';
+import type { MemoryEntry } from '../clients/memoryManagerClient.js';
+
 export interface ListenerResult {
   transcript: string;
   summary: string;
@@ -35,6 +39,17 @@ export interface CoachResponse {
   text: string;
   actions?: Array<{ type: string; text: string }>;
   reasoning?: string;
+}
+
+export interface ConversationContext {
+  profile?: Record<string, unknown>;
+  facts: MemoryEntry[];
+  goals: MemoryEntry[];
+  gratitude: MemoryEntry[];
+  lastMode?: string | null;
+  lastEmotion?: EmotionState | null;
+  physicalState?: PhysicalStateSummary;
+  mindBehaviorState?: MindBehaviorState;
 }
 
 export interface OrchestratorInput {

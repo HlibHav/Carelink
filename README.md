@@ -1,26 +1,14 @@
-# LifeCompanion – Voice-First AI Companion & Coach
+# CareLink – Elder Support AI System
 
-LifeCompanion is a voice-first AI companion for older adults that combines:
-- **OpenAI** for reasoning, coaching, emotion understanding, and semantic memory (RAG)
-- **ElevenLabs** for a single warm, emotionally-adaptive voice
-- **Google Cloud Run + Firestore** for backend + memory
-- (Optional later) **Featherless / Verda** for custom models at scale
+CareLink is the production evolution of the LifeCompanion concept.  
+It separates responsibilities into **Agents**, **Engines**, and **Services** exactly as described in `docs/architecture/carelink_system_spec_cursor_ready.md`.
 
-The agent:
-- **Initiates conversations** (not just reacts)
-- Tracks **mood, routines, gratitude, health context (mocked Apple Watch data)** 
-- Switches between modes: *support*, *coach*, *gratitude*, *game*
-- Uses **one stable voice** with multiple emotional tones (warm, calming, playful, serious)
-- Maintains **long-term memory** of the person’s life, goals, and stories
-
-This repo contains **project documentation** you can drop into Cursor or any IDE to start building:
-- Tech stack
-- System & AI architecture
-- Functional / non-functional requirements
-- Agent prompts
-- Memory specification
-- Observability with Phoenix
-- Evals plan
+Core pillars:
+- **Dialogue Agent** provides a warm, multimodal interface.
+- **Coach + Safety Agents** reason over deterministic outputs from the engines.
+- **Physical Health Engine** and **Mind & Behavior Engine** compute trends/alerts from sensor and conversational signals.
+- **Memory Manager** exposes deterministic APIs for storing/retrieving user memories, goals, and safety profiles.
+- **Gateway App** is now a thin authenticated API surface that forwards requests to the internal mesh.
 
 ## Folder Structure
 
@@ -41,12 +29,21 @@ This repo contains **project documentation** you can drop into Cursor or any IDE
   - `agent-emotion-classifier.md`
   - `agent-coach.md`
   - `agent-tone-selector.md`
+- `agents/` – placeholders for Dialogue, Coach, Safety, and Memory nightly agents.
+- `engines/`
+  - `physical/` – deterministic vitals analytics stub + alert stream.
+  - `mind-behavior/` – unified emotional/cognitive/social/routine analytics stub.
+- `services/`
+  - `memory-manager/` – HTTP API matching CareLink’s memory contracts.
+- `apps/`
+  - `gateway/` – public HTTP API (dialogue gateway).
+  - `frontend/` – developer-facing UI (still under `frontend/` directory).
 
 Start by reading:
 
-1. `docs/architecture.md`
-2. `docs/ai-architecture.md`
-3. `docs/technical-design.md`
+1. `docs/architecture/carelink_system_spec_cursor_ready.md`
+2. `docs/architecture/repo_structure.md`
+3. `docs/ai-architecture.md`
 4. `prompts/system-life-companion.md`
 
-Then scaffold the backend (Cloud Run service with Node/TS) and plug in OpenAI + ElevenLabs using this doc set. A starter Express/TypeScript implementation now lives in `backend/` with the documented REST endpoints so you can begin wiring the orchestration loop immediately.
+Then run the stub services (`engines/*`, `services/memory-manager`) alongside `apps/gateway` to exercise the end-to-end pipeline.

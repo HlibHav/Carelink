@@ -1,8 +1,7 @@
-import type { ConversationContext } from '../services/memoryService.js';
 import { getOpenAIClient, openAiModels } from '../services/openAIClient.js';
 
 import { loadPrompt } from './promptLoader.js';
-import type { CoachResponse, EmotionState, ListenerResult, ModePlan } from './types.js';
+import type { CoachResponse, ConversationContext, EmotionState, ListenerResult, ModePlan } from './types.js';
 
 const systemPrompt = `${loadPrompt('system-life-companion.md')}\n\n${loadPrompt('agent-coach.md')}`;
 
@@ -24,6 +23,16 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
       : null,
     input.context.gratitude.length
       ? `Gratitude:\n${input.context.gratitude.map((f) => `- ${f.text}`).join('\n')}`
+      : null,
+    input.context.physicalState
+      ? `Physical Summary:\n${input.context.physicalState.summary}\nKey vitals: ${input.context.physicalState.vitals
+          .map((vital) => `${vital.label}: ${vital.value}${vital.unit} (${vital.risk})`)
+          .join('; ')}`
+      : null,
+    input.context.mindBehaviorState
+      ? `Mind & Behavior Summary:\n${input.context.mindBehaviorState.summary}\nDomains:\n${input.context.mindBehaviorState.domains
+          .map((domain) => `- ${domain.label}: ${domain.status} (${domain.score})`)
+          .join('\n')}`
       : null,
   ]
     .filter(Boolean)
