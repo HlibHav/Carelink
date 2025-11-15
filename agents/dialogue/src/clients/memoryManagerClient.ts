@@ -7,7 +7,6 @@ export interface MemoryEntry {
   importance: 'low' | 'medium' | 'high';
   createdAt: string;
   metadata?: Record<string, unknown>;
-  status?: string;
 }
 
 export interface MemorySnapshot {
@@ -17,16 +16,6 @@ export interface MemorySnapshot {
   gratitude: MemoryEntry[];
   lastMode?: string | null;
   lastEmotion?: Record<string, unknown> | null;
-}
-
-interface TurnPayload {
-  sessionId: string;
-  turnId: string;
-  role: 'user' | 'assistant';
-  text: string;
-  emotion?: Record<string, unknown>;
-  mode?: string;
-  metadata?: Record<string, unknown>;
 }
 
 const baseUrl = () => config.services.memoryManagerUrl;
@@ -39,43 +28,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Memory Manager request failed (${response.status}): ${errorText}`);
+    const message = await response.text().catch(() => 'Memory Manager call failed');
+    throw new Error(message);
   }
+
   return response.json() as Promise<T>;
 }
 
-export async function retrieveDialogueContext(userId: string, query: string): Promise<MemorySnapshot> {
-  return request<MemorySnapshot>(`/memory/${userId}/retrieve-for-dialogue`, {
+export function retrieveDialogueContext(userId: string, query: string): Promise<MemorySnapshot> {
+  return request(`/memory/${userId}/retrieve-for-dialogue`, {
     method: 'POST',
     body: JSON.stringify({ query }),
   });
 }
 
-export async function saveConversationTurn(userId: string, payload: TurnPayload): Promise<void> {
-  await request(`/memory/${userId}/turns`, {
+export function saveConversationTurn(
+  userId: string,
+  payload: {
+    sessionId: string;
+    turnId: string;
+    role: 'user' | 'assistant';
+    text: string;
+    emotion?: Record<string, unknown>;
+    mode?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<unknown> {
+  return request(`/memory/${userId}/turns`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function storeCandidateMemories(
-  userId: string,
-  category: 'facts' | 'goals' | 'gratitude' | 'safety' | 'routine',
-  items: Array<{ text: string; importance?: 'low' | 'medium' | 'high'; metadata?: Record<string, unknown> }>,
-): Promise<void> {
+export function storeFacts(userId: string, items: Array<{ text: string; importance?: 'low' | 'medium' | 'high' }>) {
   if (!items.length) {
-    return;
+    return Promise.resolve();
   }
-  await request(`/memory/${userId}/store-candidate`, {
+  return request(`/memory/${userId}/store-candidate`, {
     method: 'POST',
     body: JSON.stringify({
       items: items.map((item) => ({
-        category,
+        category: 'facts',
         text: item.text,
         importance: item.importance ?? 'low',
-        metadata: item.metadata,
       })),
     }),
   });

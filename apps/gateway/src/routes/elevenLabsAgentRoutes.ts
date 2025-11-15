@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { config } from '../config.js';
-import { runConversationPipeline } from '../orchestrator/conversationOrchestrator.js';
 import { asyncHandler } from '../shared/asyncHandler.js';
 import { errors } from '../shared/httpErrors.js';
+import { runDialogueAgentTurn } from '../services/dialogueAgentClient.js';
 
 export const elevenLabsAgentRouter = Router();
 
@@ -117,11 +117,10 @@ elevenLabsAgentRouter.post(
       req.get('x-session-id')?.trim() ||
       `elevenlabs_${requestUserId}`;
 
-    const result = await runConversationPipeline({
+    const dialogueResult = await runDialogueAgentTurn({
       userId: requestUserId,
       sessionId: resolvedSessionId,
       transcript: parsed.data.transcript.trim(),
-      locale: parsed.data.locale,
       metadata: {
         source: 'elevenlabs-hosted-agent',
         ...(parsed.data.metadata ?? {}),
@@ -129,13 +128,13 @@ elevenLabsAgentRouter.post(
     });
 
     res.json({
-      turnId: result.turnId,
-      transcript: result.transcript,
-      text: result.coach.text,
-      tone: result.tone,
-      plan: result.plan,
-      emotion: result.emotion,
-      listener: result.listener,
+      turnId: dialogueResult.turnId,
+      transcript: dialogueResult.transcript,
+      text: dialogueResult.coach.text,
+      tone: dialogueResult.tone,
+      plan: dialogueResult.plan,
+      emotion: dialogueResult.emotion,
+      listener: dialogueResult.listener,
     });
   }),
 );

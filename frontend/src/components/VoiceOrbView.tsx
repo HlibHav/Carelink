@@ -228,6 +228,7 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
     } finally {
       setAutoConnectAttempted(true);
     }
+<<<<<<< HEAD
   }, [buildSessionConfig, cleanUpConversation, dialogueClientTools, envVolume, handleRequestMic, status]);
 
   useEffect(() => {

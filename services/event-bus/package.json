@@ -1,5 +1,5 @@
 {
-  "name": "@carelink/mind-behavior-engine",
+  "name": "@carelink/event-bus",
   "version": "0.1.0",
   "private": true,
   "type": "module",

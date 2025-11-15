@@ -1,7 +1,6 @@
-import type { TonePresetName } from '../services/elevenLabsService.js';
+import type { TonePresetName } from '../types/tone.js';
 
 import type { EmotionState, ModePlan } from './types.js';
-
 
 export function determineTone(emotion: EmotionState, plan: ModePlan): TonePresetName {
   if (plan.mode === 'support') {

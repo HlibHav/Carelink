@@ -19,12 +19,12 @@ const baseUrl = () => config.services.mindBehaviorEngineUrl;
 async function request<T>(path: string): Promise<T> {
   const response = await fetch(`${baseUrl()}${path}`);
   if (!response.ok) {
-    const text = await response.text().catch(() => 'Unknown error');
-    throw new Error(`Mind & Behavior engine call failed (${response.status}): ${text}`);
+    const text = await response.text().catch(() => 'Mind & Behavior engine error');
+    throw new Error(text);
   }
   return response.json() as Promise<T>;
 }
 
-export function getMindBehaviorStateSummary(userId: string): Promise<MindBehaviorState> {
-  return request<MindBehaviorState>(`/state/${userId}`);
+export function getMindBehaviorState(userId: string): Promise<MindBehaviorState> {
+  return request(`/state/${userId}`);
 }
