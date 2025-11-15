@@ -47,10 +47,20 @@ const envConversationToken = (env.VITE_ELEVENLABS_CONVERSATION_TOKEN ?? '').trim
 const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? 'demo-user').trim();
 const envConnectionType = (env.VITE_ELEVENLABS_CONNECTION_TYPE ?? '').trim();
 const envServerLocation = (env.VITE_ELEVENLABS_SERVER_LOCATION ?? '').trim();
-const envAutoConnect = (env.VITE_ELEVENLABS_AUTO_CONNECT ?? '').toLowerCase() === 'true';
+const envAutoConnectPreference = (env.VITE_ELEVENLABS_AUTO_CONNECT ?? '').trim().toLowerCase();
+const envAutoConnect = envAutoConnectPreference === 'true';
+const envAutoConnectDisabled = envAutoConnectPreference === 'false';
 const envTextOnly = (env.VITE_ELEVENLABS_TEXT_ONLY ?? '').toLowerCase() === 'true';
 const envVolume = Number(env.VITE_ELEVENLABS_VOLUME ?? '0.85');
-const hasAutoConfig = Boolean(envAgentId || envSignedUrl || envConversationToken);
+const envDebugLogging = (env.VITE_ELEVENLABS_DEBUG ?? '').trim().toLowerCase() === 'true';
+const shouldDebugLogs = envDebugLogging || Boolean(import.meta.env.DEV);
+const debugLog = (...args: unknown[]) => {
+  if (!shouldDebugLogs) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.debug('[EmbeddedAgentPanel]', ...args);
+};
 
 const uuid = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -83,7 +93,8 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
   const [volume, setVolume] = useState(Number.isFinite(envVolume) ? envVolume : 0.85);
   const [micReady, setMicReady] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [autoConnectAttempted, setAutoConnectAttempted] = useState(!envAutoConnect || !hasAutoConfig);
+  const [shouldAutoConnect, setShouldAutoConnect] = useState(envAutoConnect);
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
   const [widgetError, setWidgetError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
@@ -92,20 +103,22 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [canSendFeedback, setCanSendFeedback] = useState(false);
-  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
   const conversationRef = useRef<ConversationInstance | null>(null);
 
   // Auto-load agent configuration from backend
   useEffect(() => {
     if (!auth || envAgentId || envConversationToken) {
-      // Skip if auth not provided or env vars already set
+      debugLog('Skipping backend config fetch', {
+        hasAuth: Boolean(auth),
+        hasEnvAgentId: Boolean(envAgentId),
+        hasEnvToken: Boolean(envConversationToken),
+      });
       return;
     }
 
     let cancelled = false;
-    setIsLoadingConfig(true);
-
+    debugLog('Requesting agent config from backend');
     getElevenLabsAgentConfig(auth)
       .then((config) => {
         if (cancelled) return;
@@ -115,16 +128,22 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
         if (config.conversationToken) {
           setConversationToken(config.conversationToken);
         }
+        if (
+          !envAutoConnectDisabled &&
+          (config.agentId?.trim()?.length || config.conversationToken?.trim()?.length)
+        ) {
+          setShouldAutoConnect(true);
+        }
+        debugLog('Loaded agent config from backend', {
+          hasAgentId: Boolean(config.agentId),
+          hasToken: Boolean(config.conversationToken),
+        });
       })
       .catch((error) => {
         if (cancelled) return;
+        debugLog('Failed to load agent config', error);
         console.warn('Failed to load agent configuration:', error);
         // Don't show error to user, just fall back to manual input
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoadingConfig(false);
-        }
       });
 
     return () => {
@@ -144,6 +163,9 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     (event: any) => {
       if (!event || typeof event !== 'object') {
         return;
+      }
+      if (shouldDebugLogs) {
+        debugLog('Incoming event', { type: event.type });
       }
       switch (event.type) {
         case 'agent_response':
@@ -201,6 +223,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
 
   const cleanUpConversation = useCallback(async () => {
     if (conversationRef.current) {
+      debugLog('Cleaning up conversation session');
       try {
         await conversationRef.current.endSession();
       } catch {
@@ -215,8 +238,10 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicReady(true);
       setWidgetError(null);
+      debugLog('Microphone ready');
     } catch {
       setWidgetError('Microphone permission denied or unavailable.');
+      debugLog('Microphone permission denied');
     }
   }, []);
 
@@ -232,6 +257,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     };
 
     if (trimmedSignedUrl) {
+      debugLog('Building session config from signed URL');
       return {
         ...base,
         signedUrl: trimmedSignedUrl,
@@ -240,6 +266,9 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     }
 
     if (trimmedToken) {
+      debugLog('Building session config from conversation token', {
+        tokenLength: trimmedToken.length,
+      });
       return {
         ...base,
         conversationToken: trimmedToken,
@@ -251,6 +280,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       throw new Error('Provide an Agent ID or a signed URL / conversation token.');
     }
 
+    debugLog('Building session config from Agent ID', { connectionType });
     return {
       ...base,
       agentId: trimmedAgent,
@@ -260,6 +290,12 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
 
   const handleConnect = useCallback(async () => {
     if (isConnecting) return;
+    debugLog('Attempting to connect agent', {
+      textOnly,
+      preferredConnectionType: connectionType,
+      hasSignedUrl: Boolean(signedUrl.trim()),
+      hasConversationToken: Boolean(conversationToken.trim()),
+    });
     setIsConnecting(true);
     setWidgetError(null);
     setConnectionStatus('connecting');
@@ -314,9 +350,11 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       setConnectionStatus('connected');
       setStatusMessage('Agent connected.');
       appendMessage({ role: 'system', text: 'Agent connection requested.' });
+      debugLog('Agent connected');
     } catch (error) {
       setWidgetError(error instanceof Error ? error.message : 'Unable to start agent session.');
       setConnectionStatus('disconnected');
+      debugLog('Agent connection failed', error);
     } finally {
       setIsConnecting(false);
       setAutoConnectAttempted(true);
@@ -338,6 +376,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     setIsSpeaking(false);
     setCanSendFeedback(false);
     appendMessage({ role: 'system', text: 'Agent session closed.' });
+    debugLog('Agent disconnected');
   }, [appendMessage, cleanUpConversation]);
 
   const handleSendText = () => {
@@ -382,11 +421,37 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
   }, [volume]);
 
   useEffect(() => {
-    if (!envAutoConnect || autoConnectAttempted || !hasAutoConfig) {
+    if (
+      !shouldAutoConnect ||
+      autoConnectAttempted ||
+      isConnecting ||
+      connectionStatus === 'connected'
+    ) {
       return;
     }
+
+    const hasSessionConfig =
+      Boolean(signedUrl.trim()) ||
+      Boolean(conversationToken.trim()) ||
+      Boolean(agentId.trim());
+
+    if (!hasSessionConfig) {
+      debugLog('Auto-connect waiting for config');
+      return;
+    }
+
+    debugLog('Auto-connect triggering Conversation.startSession()');
     handleConnect();
-  }, [autoConnectAttempted, envAutoConnect, handleConnect, hasAutoConfig]);
+  }, [
+    agentId,
+    autoConnectAttempted,
+    connectionStatus,
+    conversationToken,
+    handleConnect,
+    isConnecting,
+    shouldAutoConnect,
+    signedUrl,
+  ]);
 
   const messageHeader = useMemo(() => {
     if (!messages.length) {

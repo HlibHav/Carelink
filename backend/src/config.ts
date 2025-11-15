@@ -43,6 +43,10 @@ export const config = {
     voiceId: process.env.ELEVENLABS_VOICE_ID ?? '',
     modelId: process.env.ELEVENLABS_MODEL_ID ?? 'eleven_flash_v2',
     baseUrl: process.env.ELEVENLABS_BASE_URL?.replace(/\/$/, '') ?? 'https://api.elevenlabs.io/v1',
-    agentId: process.env.ELEVENLABS_AGENT_ID ?? '',
+    agentId:
+      process.env.ELEVENLABS_AGENT_ID ??
+      process.env.VITE_ELEVENLABS_AGENT_ID ??
+      '',
+    debug: (process.env.ELEVENLABS_DEBUG ?? '').toLowerCase() === 'true',
   },
 };
