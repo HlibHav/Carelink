@@ -16,12 +16,12 @@ export async function transcribeAudio({
 
   const file = await OpenAI.toFile(audioBuffer, filename);
 
-  const transcription = await client.audio.transcriptions.create({
+  const transcription = (await client.audio.transcriptions.create({
     file,
     model: openAiModels.transcription,
     language,
     response_format: 'text',
-  });
+  })) as string | { text?: string };
 
   return typeof transcription === 'string' ? transcription : transcription.text ?? '';
 }

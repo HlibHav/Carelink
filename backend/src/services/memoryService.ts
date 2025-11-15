@@ -1,5 +1,6 @@
 import type { Firestore } from '@google-cloud/firestore';
 
+import type { EmotionState } from '../orchestrator/types.js';
 import { cosineSimilarity } from '../utils/cosineSimilarity.js';
 
 import { createEmbedding } from './embeddingService.js';
@@ -23,7 +24,7 @@ export interface ConversationContext {
   goals: MemoryEntry[];
   gratitude: MemoryEntry[];
   lastMode?: string;
-  lastEmotion?: Record<string, unknown>;
+  lastEmotion?: EmotionState;
 }
 
 interface SaveTurnInput {
@@ -33,7 +34,7 @@ interface SaveTurnInput {
   role: 'user' | 'assistant';
   text: string;
   metadata?: Record<string, unknown>;
-  emotion?: Record<string, unknown>;
+  emotion?: EmotionState;
   mode?: string;
 }
 
@@ -148,7 +149,7 @@ class MemoryService {
       goals: this.rankBySimilarity(goals, embedding),
       gratitude: this.rankBySimilarity(gratitude, embedding),
       lastMode: conversationSnapshot?.lastMode as string | undefined,
-      lastEmotion: (conversationSnapshot?.lastEmotion as Record<string, unknown>) ?? undefined,
+      lastEmotion: (conversationSnapshot?.lastEmotion as EmotionState) ?? undefined,
     };
   }
 

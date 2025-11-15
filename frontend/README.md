@@ -42,6 +42,7 @@ The dev server defaults to `http://localhost:5173` and proxies requests directly
 3. **Send Utterance** – Type a transcript (or attach audio) and press “Send”. Each submission shows up in the conversation timeline with backend acknowledgements.
 4. **Session Summary** – Once turns are flowing, hit “Refresh” to call `/api/session-summary` and render demo insights.
 5. **Hosted Agent** – Scroll down to the “ElevenLabs Agents Widget” card. The frontend now fetches the agent config from the backend, requests mic access, and connects automatically once a token comes back. Set `VITE_ELEVENLABS_AUTO_CONNECT=false` if you want to opt out, or `true` to force auto-connect even when you supply IDs via env vars. Otherwise you can paste the IDs manually and hit **Connect**. The panel streams transcripts, metadata, and lets you send manual turns/feedback through the official `@elevenlabs/react` SDK.
+6. **Orb View** – Visit `http://localhost:5173/convai` to open a distraction-free screen with a single animated orb that reflects the agent’s state (connecting, listening, speaking). The orb auto-connects using the same ElevenLabs configuration/environment variables as the main widget, so you can test an immersive kiosk-like experience.
 
 ## Scripts
 
