@@ -4,6 +4,7 @@ import morgan from 'morgan';
 
 import { config } from './config.js';
 import { conversationRouter } from './routes/conversationRoutes.js';
+import { elevenLabsAgentRouter } from './routes/elevenLabsAgentRoutes.js';
 import { healthRouter } from './routes/healthRoutes.js';
 import { voiceAgentRouter } from './routes/voiceAgentRoutes.js';
 import { errorHandler } from './shared/errorHandler.js';
@@ -46,6 +47,7 @@ app.use(requireAuth);
 
 app.use('/api', conversationRouter);
 app.use('/api/voice-agent', voiceAgentRouter);
+app.use('/api/elevenlabs', elevenLabsAgentRouter);
 
 app.use(errorHandler);
 

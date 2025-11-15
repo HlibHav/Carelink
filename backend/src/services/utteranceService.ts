@@ -1,37 +1,49 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
+import { runConversationPipeline } from '../orchestrator/conversationOrchestrator.js';
+import type { OrchestratorResult } from '../orchestrator/types.js';
 import { sessionStore } from '../stores/sessionStore.js';
 
+interface AcceptUtteranceInput {
+  sessionId: string;
+  userId: string;
+  transcript?: string;
+  durationMs?: number;
+  audioBuffer?: Buffer;
+  locale?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export const utteranceService = {
-  acceptUtterance: ({
-    sessionId,
-    transcript,
-    durationMs,
-  }: {
-    sessionId: string;
-    transcript?: string;
-    durationMs?: number;
-  }) => {
+  async acceptUtterance(input: AcceptUtteranceInput): Promise<OrchestratorResult> {
     const turnId = `turn_${randomUUID()}`;
-    const turn = sessionStore.upsertTurn({
+    sessionStore.upsertTurn({
       turnId,
-      sessionId,
-      transcript,
-      durationMs,
+      sessionId: input.sessionId,
+      transcript: input.transcript,
+      durationMs: input.durationMs,
       status: 'processing',
       createdAt: new Date().toISOString(),
     });
 
-    // In the real system we would enqueue the orchestrator pipeline here.
+    const result = await runConversationPipeline({
+      userId: input.userId,
+      sessionId: input.sessionId,
+      transcript: input.transcript,
+      audioBuffer: input.audioBuffer,
+      locale: input.locale,
+      metadata: input.metadata,
+    });
 
-    return {
-      turnId: turn.turnId,
-      sessionId: turn.sessionId,
-      stream: {
-        websocket: `wss://api.lifecompanion.app/ws/conversation?sess=${sessionId}`,
-        sse: `https://api.lifecompanion.app/api/turn-stream?turn=${turn.turnId}`,
-      },
-      estimatedProcessingMs: 4500,
-    };
+    sessionStore.upsertTurn({
+      turnId,
+      sessionId: input.sessionId,
+      transcript: result.transcript,
+      durationMs: input.durationMs,
+      status: 'completed',
+      createdAt: new Date().toISOString(),
+    });
+
+    return result;
   },
 };

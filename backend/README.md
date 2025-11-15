@@ -15,15 +15,24 @@ TypeScript/Express scaffolding for the voice-first LifeCompanion service describ
    ```
 3. **Environment variables**
    - `PORT` (default `8080`)
-   - `ALLOWED_ORIGINS` – optional CSV for CORS
+   - `ALLOWED_ORIGINS` – optional CSV for CORS (defaults to `5173` & `5174`)
+   - `OPENAI_API_KEY` plus optional `OPENAI_*_MODEL` overrides for chat/emotion/planner/embeddings/Whisper
+   - `GOOGLE_PROJECT_ID` and application credentials for Firestore
+   - `FIRESTORE_EMULATOR_HOST` if you prefer running against the emulator (`localhost:8080`)
    - `PHOENIX_ENDPOINT` – placeholder for observability client
    - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – configure the voice agent
 
-Create a `.env` file if you want to run locally:
+Create a `.env` file if you want to run locally (trim to what you need):
 
 ```
 PORT=8080
-ALLOWED_ORIGINS=http://localhost:5173
+ALLOWED_ORIGINS=http://localhost:4000
+OPENAI_API_KEY=sk-your-key
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+GOOGLE_PROJECT_ID=lifecompanion-dev
+# FIRESTORE_EMULATOR_HOST=localhost:8080
 ELEVENLABS_API_KEY=your-xi-api-key
 ELEVENLABS_VOICE_ID=your-voice-id
 ELEVENLABS_MODEL_ID=eleven_flash_v2
@@ -39,7 +48,7 @@ ELEVENLABS_MODEL_ID=eleven_flash_v2
 | --- | --- |
 | `GET /healthz` | Liveness probe |
 | `POST /api/start-conversation` | Creates a session and returns WebSocket/SSE endpoints |
-| `POST /api/user-utterance` | Accepts an audio (multipart) or transcript payload for a session turn |
+| `POST /api/user-utterance` | Runs the multi-agent orchestrator (Whisper → LLM → RAG → ElevenLabs) for a session turn |
 | `GET /api/session-summary?sessionId=...` | Returns nightly summary placeholder data |
 
 All `/api/*` routes require:
@@ -49,8 +58,15 @@ All `/api/*` routes require:
 
 `/api/user-utterance` additionally requires `X-Session-Id`.
 
+## Architecture Highlights
+
+- **Orchestrator Pipeline**: `/api/user-utterance` now executes the full pipeline (Whisper STT → Listener & Emotion agents → Planner → Coach → Tone selector → ElevenLabs TTS) and returns the generated reply + base64 audio.
+- **OpenAI Integration**: configurable models for LLM, planner, emotion classifier, embeddings, and transcription.
+- **Memory & RAG**: Firestore stores user turns plus extracted facts/goals/gratitude with embeddings; a lightweight cosine RAG feeds context into the agents.
+- **Voice Output**: The official ElevenLabs API produces natural audio aligned with the planner’s selected tone.
+
 ## Next Steps
 
-- Replace in-memory stores with Firestore persistence + LangGraph orchestrator calls.
-- Hook `utteranceService` up to Whisper STT, emotion/mode agents, and ElevenLabs streaming.
-- Emit Phoenix spans from each service step once the observability client is wired.
+- Emit Phoenix spans for every pipeline step.
+- Replace the in-memory session store with Firestore or Redis.
+- Implement SSE/WebSocket streaming so clients receive incremental transcripts/tts chunks.

@@ -30,9 +30,10 @@ The dev server defaults to `http://localhost:5173` and proxies requests directly
 | `VITE_ELEVENLABS_CONNECTION_TYPE` | `webrtc` or `websocket` when using an Agent ID                              | `webrtc`                       |
 | `VITE_ELEVENLABS_SERVER_LOCATION` | `us`, `global`, `eu-residency`, or `in-residency`                            | `us`                           |
 | `VITE_ELEVENLABS_USER_ID`         | Default user identifier passed to ElevenLabs                                | `demo-user`                    |
-| `VITE_ELEVENLABS_AUTO_CONNECT`    | `true` to request mic access and start the hosted agent automatically       | `false`                        |
+| `VITE_ELEVENLABS_AUTO_CONNECT`    | Leave empty to auto-connect once the backend shares a token, set `true` to force it for env config, or `false` to disable | _auto (connect after config)_  |
 | `VITE_ELEVENLABS_TEXT_ONLY`       | `true` to run the hosted widget without audio                               | `false`                        |
 | `VITE_ELEVENLABS_VOLUME`          | Initial agent playback volume (0–1)                                         | `0.85`                         |
+| `VITE_ELEVENLABS_DEBUG`           | `true` to emit verbose console logs from the embedded agent panel           | `false` (only dev mode logs)   |
 
 ## UI Flow
 
@@ -40,7 +41,7 @@ The dev server defaults to `http://localhost:5173` and proxies requests directly
 2. **Launch Conversation** – Adjust locale/capabilities, then press “Start Conversation”. The session card populates with IDs, upload URLs, and ice breakers.
 3. **Send Utterance** – Type a transcript (or attach audio) and press “Send”. Each submission shows up in the conversation timeline with backend acknowledgements.
 4. **Session Summary** – Once turns are flowing, hit “Refresh” to call `/api/session-summary` and render demo insights.
-5. **Hosted Agent** – Scroll down to the “ElevenLabs Agents Widget” card. If you set `VITE_ELEVENLABS_AGENT_ID` (or a signed URL/token) plus `VITE_ELEVENLABS_AUTO_CONNECT=true`, the agent will request mic access and connect immediately. Otherwise you can paste the IDs manually and hit **Connect**. The panel streams transcripts, metadata, and lets you send manual turns/feedback through the official `@elevenlabs/react` SDK.
+5. **Hosted Agent** – Scroll down to the “ElevenLabs Agents Widget” card. The frontend now fetches the agent config from the backend, requests mic access, and connects automatically once a token comes back. Set `VITE_ELEVENLABS_AUTO_CONNECT=false` if you want to opt out, or `true` to force auto-connect even when you supply IDs via env vars. Otherwise you can paste the IDs manually and hit **Connect**. The panel streams transcripts, metadata, and lets you send manual turns/feedback through the official `@elevenlabs/react` SDK.
 
 ## Scripts
 

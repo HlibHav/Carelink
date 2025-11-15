@@ -107,3 +107,12 @@ export function speakWithVoiceAgent(
 ): Promise<VoiceAgentResponse> {
   return request('/voice-agent/speak', { method: 'POST', body: JSON.stringify(payload) }, auth);
 }
+
+export interface ElevenLabsAgentConfig {
+  agentId: string;
+  conversationToken: string;
+}
+
+export function getElevenLabsAgentConfig(auth: AuthConfig): Promise<ElevenLabsAgentConfig> {
+  return request('/elevenlabs/agent-config', { method: 'GET' }, auth);
+}
