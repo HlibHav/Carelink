@@ -1,12 +1,6 @@
-<<<<<<<< HEAD:agents/dialogue/src/orchestrator/types.ts
-import type { MindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
-import type { PhysicalStateSummary } from '../clients/physicalEngineClient.js';
-import type { MemoryEntry } from '../clients/memoryManagerClient.js';
-========
 import type { MemoryEntry } from '../clients/memoryManagerClient.js';
 import type { MindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
 import type { PhysicalStateSummary } from '../clients/physicalEngineClient.js';
->>>>>>>> origin/main:apps/gateway/src/orchestrator/types.ts
 
 export interface ListenerResult {
   transcript: string;
@@ -58,15 +52,17 @@ export interface ConversationContext {
   mindBehaviorState?: MindBehaviorState;
 }
 
-<<<<<<<< HEAD:agents/dialogue/src/orchestrator/types.ts
 export interface DialogueAgentInput {
-========
-export interface OrchestratorInput {
->>>>>>>> origin/main:apps/gateway/src/orchestrator/types.ts
   userId: string;
   sessionId: string;
   transcript: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface SafetyCommandContext {
+  prompt: string;
+  reason?: string;
+  escalation?: string;
 }
 
 export interface DialogueAgentResult {
@@ -77,4 +73,5 @@ export interface DialogueAgentResult {
   plan: ModePlan;
   coach: CoachResponse;
   tone: string;
+  safetyCommand?: SafetyCommandContext;
 }
