@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 import dotenv from 'dotenv';
 
+import { getEventsSince, recordEvent } from './lib/persistentTopics.js';
+
 dotenv.config();
 
 const port = Number(process.env.PORT ?? 4300);
@@ -45,17 +47,23 @@ app.post('/events', (req, res) => {
     return;
   }
 
-  const delivered = sendEvent(parsed.data.topic, {
+  const event = {
     id: randomUUID(),
     publishedAt: new Date().toISOString(),
     payload: parsed.data.event,
-  });
+  };
+  recordEvent(parsed.data.topic, event);
+  const delivered = sendEvent(parsed.data.topic, event);
 
   res.status(202).json({ delivered });
 });
 
+const subscriberSchema = z.object({
+  topic: z.string().min(1),
+});
+
 app.get('/events/stream/:topic', (req, res) => {
-  const parsed = subscribeSchema.safeParse(req.params);
+  const parsed = subscriberSchema.safeParse(req.params);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
@@ -74,6 +82,11 @@ app.get('/events/stream/:topic', (req, res) => {
     subscribers.set(topic, new Set());
   }
   subscribers.get(topic)!.add(res);
+
+  const since = typeof req.query.lastEventId === 'string' ? req.query.lastEventId : undefined;
+  getEventsSince(topic, since).forEach((event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  });
 
   req.on('close', () => {
     subscribers.get(topic)?.delete(res);
