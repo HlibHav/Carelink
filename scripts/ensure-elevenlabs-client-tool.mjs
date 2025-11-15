@@ -8,6 +8,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 
 const TOOL_NAME = 'carelink_dialogue_orchestrator';
 
@@ -88,38 +89,208 @@ const clientToolDefinition = {
   },
 };
 
-const payload = {
-  workflow: {
-    client_tools: [clientToolDefinition],
-  },
-};
-
 const run = async () => {
-  const targetUrl = `${baseUrl}/convai/agents/${agentId}`;
-  console.log(`➡️  Updating ElevenLabs agent ${agentId}...`);
-  console.log(`   URL: ${targetUrl}`);
-  console.log(`   Payload: ${JSON.stringify(payload, null, 2)}`);
-  
-  const response = await fetch(targetUrl, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'xi-api-key': apiKey,
-    },
-    body: JSON.stringify(payload),
-  });
+  console.log(`═══════════════════════════════════════════════════════════`);
+  console.log(`🚀 CareLink ElevenLabs Agent Configuration Script`);
+  console.log(`═══════════════════════════════════════════════════════════\n`);
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    console.error(`❌ Failed to update agent (${response.status}): ${errorText}`);
-    console.error(`   This might be a temporary ElevenLabs API issue.`);
-    console.error(`   Check: https://status.elevenlabs.io for API status`);
+  // Log configuration
+  console.log(`📋 Configuration:`);
+  console.log(`   Base URL: ${baseUrl}`);
+  console.log(`   Agent ID: ${agentId}`);
+  console.log(`   API Key: ${apiKey ? `${apiKey.slice(0, 10)}...${apiKey.slice(-4)}` : 'NOT SET'}`);
+  console.log(`   Tool Name: ${TOOL_NAME}\n`);
+
+  // Initialize ElevenLabs client with API key
+  console.log(`🔧 Initializing ElevenLabs client...`);
+  const client = new ElevenLabsClient({
+    apiKey: apiKey,
+  });
+  console.log(`✅ Client initialized\n`);
+
+  try {
+    // First, get the current agent configuration
+    console.log(`═══════════════════════════════════════════════════════════`);
+    console.log(`STEP 1: Fetching current agent configuration`);
+    console.log(`═══════════════════════════════════════════════════════════\n`);
+    
+    const getUrl = `${baseUrl}/convai/agents/${agentId}`;
+    console.log(`📡 GET Request:`);
+    console.log(`   URL: ${getUrl}`);
+    console.log(`   Headers: { 'xi-api-key': '${apiKey.slice(0, 10)}...${apiKey.slice(-4)}' }`);
+    console.log(`   Method: GET\n`);
+    
+    const getResponse = await fetch(getUrl, {
+      method: 'GET',
+      headers: {
+        'xi-api-key': apiKey, // API key in header as per ElevenLabs docs
+      },
+    });
+
+    console.log(`📥 Response Status: ${getResponse.status} ${getResponse.statusText}`);
+    console.log(`   Headers:`, Object.fromEntries(getResponse.headers.entries()));
+
+    if (!getResponse.ok) {
+      const errorText = await getResponse.text().catch(() => 'Unknown error');
+      console.error(`\n❌ Failed to fetch agent (${getResponse.status}):`);
+      console.error(`   Response: ${errorText}`);
+      console.error(`\n💡 Troubleshooting:`);
+      console.error(`   1. Verify agent ID is correct: ${agentId}`);
+      console.error(`   2. Verify API key has "Read" access to "ElevenLabs Agents"`);
+      console.error(`   3. Check API status: https://status.elevenlabs.io`);
+      process.exit(1);
+    }
+
+    const currentAgent = await getResponse.json();
+    console.log(`\n✅ Successfully retrieved agent configuration`);
+    
+    // Debug: show current structure
+    console.log(`\n📋 Current agent structure:`);
+    console.log(`   Agent ID: ${currentAgent.agent_id || 'N/A'}`);
+    console.log(`   Has workflow: ${!!currentAgent.workflow}`);
+    console.log(`   Has client_tools: ${!!currentAgent.workflow?.client_tools}`);
+    console.log(`   Current client_tools count: ${(currentAgent.workflow?.client_tools || []).length}`);
+    
+    // Show full workflow structure for debugging
+    if (currentAgent.workflow) {
+      console.log(`\n   Workflow keys: ${Object.keys(currentAgent.workflow).join(', ')}`);
+      console.log(`   Full workflow structure:`);
+      console.log(JSON.stringify(currentAgent.workflow, null, 2));
+    }
+    
+    if (currentAgent.workflow?.client_tools?.length > 0) {
+      console.log(`\n   Existing client tools:`);
+      currentAgent.workflow.client_tools.forEach((tool, idx) => {
+        console.log(`     ${idx + 1}. ${tool.name}: ${tool.description?.slice(0, 50)}...`);
+      });
+    }
+
+    // Check if tool already exists in conversation_config.agent.prompt.tools
+    const existingTools = currentAgent.conversation_config?.agent?.prompt?.tools || [];
+    const toolExists = existingTools.some((tool) => tool.name === TOOL_NAME && tool.type === 'client');
+    
+    if (toolExists) {
+      console.log(`\n═══════════════════════════════════════════════════════════`);
+      console.log(`ℹ️  Client tool "${TOOL_NAME}" already exists!`);
+      console.log(`═══════════════════════════════════════════════════════════\n`);
+      console.log(`📋 Current client tools:`);
+      const clientTools = existingTools.filter((t) => t.type === 'client');
+      console.log(JSON.stringify(clientTools, null, 2));
+      console.log(`\n✅ No changes needed. Script completed successfully.`);
+      return;
+    }
+
+    // Update conversation_config.agent.prompt.tools (not workflow.client_tools)
+    console.log(`\n═══════════════════════════════════════════════════════════`);
+    console.log(`STEP 2: Preparing update payload`);
+    console.log(`═══════════════════════════════════════════════════════════\n`);
+    
+    // Add the new client tool to existing tools
+    const updatedTools = [
+      ...existingTools,
+      clientToolDefinition,
+    ];
+    
+    const updatePayload = {
+      conversation_config: {
+        agent: {
+          prompt: {
+            tools: updatedTools,
+          },
+        },
+      },
+    };
+    
+    console.log(`📤 Update payload structure:`);
+    console.log(`   - conversation_config.agent.prompt.tools: ${updatedTools.length} tool(s)`);
+    console.log(`     - Existing: ${existingTools.length}`);
+    console.log(`     - New: 1 (${TOOL_NAME})`);
+    console.log(`\n📄 Full payload:`);
+    console.log(JSON.stringify(updatePayload, null, 2));
+
+    console.log(`\n═══════════════════════════════════════════════════════════`);
+    console.log(`STEP 3: Updating agent configuration`);
+    console.log(`═══════════════════════════════════════════════════════════
+`);
+    
+    const updateUrl = `${baseUrl}/convai/agents/${agentId}`;
+    console.log(`📡 PATCH Request:`);
+    console.log(`   URL: ${updateUrl}`);
+    console.log(`   Headers: {`);
+    console.log(`     'Content-Type': 'application/json',`);
+    console.log(`     'xi-api-key': '${apiKey.slice(0, 10)}...${apiKey.slice(-4)}'`);
+    console.log(`   }`);
+    console.log(`   Method: PATCH`);
+    console.log(`   Body size: ${JSON.stringify(updatePayload).length} bytes\n`);
+    
+    const updateResponse = await fetch(updateUrl, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'xi-api-key': apiKey, // API key in header as per ElevenLabs docs
+      },
+      body: JSON.stringify(updatePayload),
+    });
+
+    console.log(`📥 Response Status: ${updateResponse.status} ${updateResponse.statusText}`);
+    console.log(`   Headers:`, Object.fromEntries(updateResponse.headers.entries()));
+
+    if (!updateResponse.ok) {
+      const errorText = await updateResponse.text().catch(() => 'Unknown error');
+      let errorJson;
+      try {
+        errorJson = JSON.parse(errorText);
+      } catch {
+        errorJson = { raw: errorText };
+      }
+      
+      console.error(`\n❌ Failed to update agent (${updateResponse.status}):`);
+      console.error(`   Response:`, JSON.stringify(errorJson, null, 2));
+      console.error(`\n💡 Troubleshooting:`);
+      console.error(`   1. Verify API key has "Write" access to "ElevenLabs Agents"`);
+      console.error(`   2. Check agent ID is correct: ${agentId}`);
+      console.error(`   3. Verify payload format matches ElevenLabs API requirements`);
+      console.error(`   4. Check API status: https://status.elevenlabs.io`);
+      console.error(`   5. Try updating agent manually in ElevenLabs dashboard first`);
+      process.exit(1);
+    }
+
+    const data = await updateResponse.json();
+    console.log(`\n✅ Successfully updated agent configuration!`);
+    
+    console.log(`\n═══════════════════════════════════════════════════════════`);
+    console.log(`STEP 4: Verification`);
+    console.log(`═══════════════════════════════════════════════════════════\n`);
+    
+    const updatedClientTools = data?.conversation_config?.agent?.prompt?.tools?.filter((t) => t.type === 'client') || [];
+    console.log(`📋 Updated client tools (${updatedClientTools.length} total):`);
+    console.log(JSON.stringify(updatedClientTools, null, 2));
+    
+    const updatedTool = updatedClientTools.find((t) => t.name === TOOL_NAME);
+    if (updatedTool) {
+      console.log(`\n✅ Verification: Tool "${TOOL_NAME}" successfully added!`);
+    } else {
+      console.log(`\n⚠️  Warning: Tool "${TOOL_NAME}" not found in response (may still be processing)`);
+    }
+    
+    console.log(`\n═══════════════════════════════════════════════════════════`);
+    console.log(`✅ Script completed successfully!`);
+    console.log(`═══════════════════════════════════════════════════════════\n`);
+  } catch (error) {
+    console.error(`\n═══════════════════════════════════════════════════════════`);
+    console.error(`❌ Unexpected Error`);
+    console.error(`═══════════════════════════════════════════════════════════\n`);
+    console.error(`Error Type: ${error.constructor.name}`);
+    console.error(`Error Message: ${error.message}`);
+    if (error.stack) {
+      console.error(`\nStack Trace:`);
+      console.error(error.stack);
+    }
+    if (error.cause) {
+      console.error(`\nCause:`, error.cause);
+    }
     process.exit(1);
   }
-
-  const data = await response.json();
-  console.log('✅ ElevenLabs agent workflow updated with CareLink Dialogue Orchestrator client tool.');
-  console.log(JSON.stringify(data?.workflow?.client_tools ?? [], null, 2));
 };
 
 run().catch((error) => {

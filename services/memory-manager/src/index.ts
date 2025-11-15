@@ -16,6 +16,7 @@ app.use(express.json({ limit: '2mb' }));
 const db = getFirestore({
   projectId: config.firestore.projectId,
   emulatorHost: config.firestore.emulatorHost,
+  keyFilename: config.firestore.keyFilename,
 });
 
 // ============================================================================

@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.24.1"
+  }
+}
