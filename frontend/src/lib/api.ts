@@ -135,18 +135,21 @@ export function sendElevenLabsDialogueTurn(
     timestamp: new Date().toISOString(),
   });
 
-  return request('/elevenlabs/dialogue-turn', { method: 'POST', body: JSON.stringify(payload) }, auth)
-    .then((response) => {
-      const duration = Date.now() - startTime;
-      console.log('[API] Dialogue turn response received', {
-        requestId,
-        turnId: response.turnId,
-        status: 'success',
-        durationMs: duration,
-        timestamp: new Date().toISOString(),
-      });
-      return response;
-    })
+  return request<ElevenLabsDialogueTurnResponse>(
+    '/elevenlabs/dialogue-turn',
+    { method: 'POST', body: JSON.stringify(payload) },
+    auth,
+  ).then((response) => {
+    const duration = Date.now() - startTime;
+    console.log('[API] Dialogue turn response received', {
+      requestId,
+      turnId: response.turnId,
+      status: 'success',
+      durationMs: duration,
+      timestamp: new Date().toISOString(),
+    });
+    return response;
+  })
     .catch((error) => {
       const duration = Date.now() - startTime;
       console.error('[API] Dialogue turn request failed', {

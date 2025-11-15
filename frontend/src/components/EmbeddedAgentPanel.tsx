@@ -120,7 +120,11 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       createDialogueClientTools({
         auth,
         defaultUserId: userId,
+        onBeforeCall: (parameters) => {
+          debugLog('Client tool called', { parameters });
+        },
         onResult: (result) => {
+          debugLog('Client tool result', { result });
           appendMessage({
             role: 'system',
             text: `Dialogue orchestrator: ${result.text}`,
@@ -328,9 +332,20 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       }
 
       const sessionConfig = buildSessionConfig();
+      
+      // Debug: log client tools configuration
+      debugLog('Starting session with config', {
+        sessionConfig: {
+          ...sessionConfig,
+          agentId: 'agentId' in sessionConfig ? sessionConfig.agentId?.slice(0, 8) + '...' : undefined,
+        },
+        hasClientTools: Boolean(dialogueClientTools?.clientTools),
+        clientToolsKeys: dialogueClientTools?.clientTools ? Object.keys(dialogueClientTools.clientTools) : [],
+      });
+      
       const conversation = await Conversation.startSession({
         ...sessionConfig,
-        ...(dialogueClientTools ?? {}),
+        clientTools: dialogueClientTools?.clientTools,
         onStatusChange: (next: any) => {
           const value =
             typeof next === 'string'

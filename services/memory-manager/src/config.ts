@@ -14,5 +14,6 @@ export const config = {
   firestore: {
     projectId: process.env.GOOGLE_PROJECT_ID,
     emulatorHost: process.env.FIRESTORE_EMULATOR_HOST,
+    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
   },
 };

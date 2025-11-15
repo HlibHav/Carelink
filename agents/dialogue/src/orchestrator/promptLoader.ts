@@ -12,7 +12,7 @@ export function loadPrompt(filename: string): string {
     return promptCache.get(filename)!;
   }
 
-  const promptPath = join(__dirname, '../../../prompts', filename);
+  const promptPath = join(__dirname, '../../../../prompts', filename);
   const content = readFileSync(promptPath, 'utf-8');
   promptCache.set(filename, content);
   return content;

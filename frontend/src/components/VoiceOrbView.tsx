@@ -75,12 +75,18 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
       createDialogueClientTools({
         auth,
         defaultUserId: envUserId,
+        onBeforeCall: (parameters) => {
+          console.log('[VoiceOrbView] Client tool called', { parameters });
+        },
+        onResult: (result, parameters) => {
+          console.log('[VoiceOrbView] Client tool result', { result, parameters });
+        },
         onError: (message, error, parameters) => {
-          console.warn('Dialogue orchestrator tool error', { message, error, parameters });
+          console.warn('[VoiceOrbView] Dialogue orchestrator tool error', { message, error, parameters });
           setError(message);
         },
       }),
-    [auth, setError],
+    [auth],
   );
 
   useEffect(() => {
@@ -186,9 +192,21 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
       await cleanUpConversation();
       await handleRequestMic();
       const sessionConfig = buildSessionConfig();
+      
+      // Debug: log client tools configuration
+      console.log('[VoiceOrbView] Starting session with config:', {
+        sessionConfig: {
+          ...sessionConfig,
+          agentId: 'agentId' in sessionConfig ? sessionConfig.agentId?.slice(0, 8) + '...' : undefined,
+        },
+        hasClientTools: Boolean(dialogueClientTools?.clientTools),
+        clientToolsKeys: dialogueClientTools?.clientTools ? Object.keys(dialogueClientTools.clientTools) : [],
+        clientToolsObject: dialogueClientTools?.clientTools,
+      });
+      
       const conversation = await Conversation.startSession({
         ...sessionConfig,
-        ...(dialogueClientTools ?? {}),
+        clientTools: dialogueClientTools?.clientTools,
         onStatusChange: (value) => {
           const resolved =
             typeof value === 'string' ? value : typeof value?.status === 'string' ? value.status : undefined;

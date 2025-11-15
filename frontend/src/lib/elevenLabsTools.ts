@@ -34,12 +34,22 @@ const extractTranscript = (parameters: Record<string, unknown>) => {
   return candidate.trim();
 };
 
-const resolveString = (value: unknown) => (typeof value === 'string' ? value.trim() : undefined);
+const resolveString = (value: unknown) => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  // Don't treat "None", "null", "undefined" as valid values
+  if (!trimmed || trimmed === 'None' || trimmed === 'null' || trimmed === 'undefined') {
+    return undefined;
+  }
+  return trimmed;
+};
 
 export const createDialogueClientTools = (options: DialogueToolOptions) => {
   if (!options.auth) {
     return undefined;
   }
+
+  const auth = options.auth; // Type narrowing for TypeScript
 
   const handler = async (parameters: Record<string, unknown> = {}) => {
     const transcript = extractTranscript(parameters);
@@ -79,7 +89,7 @@ export const createDialogueClientTools = (options: DialogueToolOptions) => {
     };
 
     try {
-      const response = await sendElevenLabsDialogueTurn(payload, options.auth);
+      const response = await sendElevenLabsDialogueTurn(payload, auth);
       const duration = Date.now() - startTime;
 
       console.log('[ElevenLabs Client Tool] Backend response received', {
