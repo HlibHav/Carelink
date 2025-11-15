@@ -1,0 +1,505 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { useConversation } from '@elevenlabs/react';
+
+type ConversationRole = 'agent' | 'user' | 'system';
+
+interface AgentMessage {
+  id: string;
+  role: ConversationRole;
+  text: string;
+  meta?: string;
+}
+
+const connectionChoices = [
+  { label: 'WebRTC (low latency)', value: 'webrtc' },
+  { label: 'WebSocket', value: 'websocket' },
+] as const;
+
+const locationChoices = [
+  { label: 'United States', value: 'us' },
+  { label: 'Global (US)', value: 'global' },
+  { label: 'EU Residency', value: 'eu-residency' },
+  { label: 'India Residency', value: 'in-residency' },
+] as const;
+
+const statusStyles: Record<string, string> = {
+  connected: 'bg-forest/10 text-forest',
+  connecting: 'bg-midnight-100 text-midnight-700',
+  disconnected: 'bg-midnight-100 text-midnight-500',
+};
+
+const env = import.meta.env;
+const envAgentId = (env.VITE_ELEVENLABS_AGENT_ID ?? '').trim();
+const envSignedUrl = (env.VITE_ELEVENLABS_SIGNED_URL ?? '').trim();
+const envConversationToken = (env.VITE_ELEVENLABS_CONVERSATION_TOKEN ?? '').trim();
+const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? 'demo-user').trim();
+const envConnectionType = (env.VITE_ELEVENLABS_CONNECTION_TYPE ?? '').trim();
+const envServerLocation = (env.VITE_ELEVENLABS_SERVER_LOCATION ?? '').trim();
+const envAutoConnect = (env.VITE_ELEVENLABS_AUTO_CONNECT ?? '').toLowerCase() === 'true';
+const envTextOnly = (env.VITE_ELEVENLABS_TEXT_ONLY ?? '').toLowerCase() === 'true';
+const envVolume = Number(env.VITE_ELEVENLABS_VOLUME ?? '0.85');
+const hasAutoConfig = Boolean(envAgentId || envSignedUrl || envConversationToken);
+
+const uuid = () => {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+export function EmbeddedAgentPanel() {
+  const [agentId, setAgentId] = useState(envAgentId);
+  const [userId, setUserId] = useState(envUserId);
+  const [connectionType, setConnectionType] = useState<(typeof connectionChoices)[number]['value']>(
+    connectionChoices.some((choice) => choice.value === envConnectionType)
+      ? (envConnectionType as (typeof connectionChoices)[number]['value'])
+      : 'webrtc',
+  );
+  const [serverLocation, setServerLocation] = useState<(typeof locationChoices)[number]['value']>(
+    locationChoices.some((choice) => choice.value === envServerLocation)
+      ? (envServerLocation as (typeof locationChoices)[number]['value'])
+      : 'us',
+  );
+  const [signedUrl, setSignedUrl] = useState(envSignedUrl);
+  const [conversationToken, setConversationToken] = useState(envConversationToken);
+  const [textOnly, setTextOnly] = useState(envTextOnly);
+  const [micMuted, setMicMuted] = useState(false);
+  const [volume, setVolume] = useState(Number.isFinite(envVolume) ? envVolume : 0.85);
+  const [micReady, setMicReady] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [widgetError, setWidgetError] = useState<string | null>(null);
+  const [messageInput, setMessageInput] = useState('');
+  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [canSendFeedback, setCanSendFeedback] = useState(false);
+
+  const appendMessage = useCallback(
+    (entry: Omit<AgentMessage, 'id'>) => {
+      const text = entry.text?.trim();
+      if (!text) {
+        return;
+      }
+      setMessages((prev) => [...prev, { ...entry, id: uuid() }]);
+    },
+    [setMessages],
+  );
+
+  const handleIncomingEvent = useCallback(
+    (event: any) => {
+      if (!event || typeof event !== 'object') {
+        return;
+      }
+      switch (event.type) {
+        case 'agent_response':
+          appendMessage({
+            role: 'agent',
+            text: event.agent_response_event?.agent_response ?? '',
+          });
+          break;
+        case 'agent_chat_response_part':
+          appendMessage({
+            role: 'agent',
+            text: event.text_response_part?.text ?? '',
+            meta: event.text_response_part?.type === 'delta' ? 'streaming' : undefined,
+          });
+          break;
+        case 'user_transcript':
+          appendMessage({
+            role: 'user',
+            text: event.user_transcription_event?.user_transcript ?? '',
+          });
+          break;
+        case 'tentative_user_transcript':
+          appendMessage({
+            role: 'user',
+            text: event.tentative_user_transcription_event?.user_transcript ?? '',
+            meta: 'tentative',
+          });
+          break;
+        case 'client_tool_call':
+          appendMessage({
+            role: 'system',
+            text: `Client tool requested: ${event.client_tool_call?.tool_name ?? 'unknown tool'}`,
+            meta: 'tool',
+          });
+          break;
+        case 'mcp_tool_call':
+          appendMessage({
+            role: 'system',
+            text: `MCP tool requested: ${event.mcp_tool_call?.tool_name ?? 'unknown tool'}`,
+            meta: 'tool',
+          });
+          break;
+        case 'conversation_initiation_metadata':
+          appendMessage({
+            role: 'system',
+            text: `Conversation ready (${event.conversation_initiation_metadata_event?.conversation_id ?? 'unknown'})`,
+          });
+          break;
+        default:
+          break;
+      }
+    },
+    [appendMessage],
+  );
+
+  const conversation = useConversation({
+    micMuted,
+    volume,
+    textOnly,
+    serverLocation,
+    onMessage: handleIncomingEvent,
+    onCanSendFeedbackChange: (allowed) => setCanSendFeedback(Boolean(allowed)),
+    onError: (error: any) =>
+      setWidgetError(typeof error === 'string' ? error : error?.message ?? 'Agent error'),
+  });
+
+  const status = conversation.status ?? 'disconnected';
+  const statusClass = statusStyles[status] ?? statusStyles.disconnected;
+
+  const handleRequestMic = useCallback(async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      setMicReady(true);
+      setWidgetError(null);
+    } catch {
+      setWidgetError('Microphone permission denied or unavailable.');
+    }
+  }, []);
+
+  const buildSessionConfig = useCallback(() => {
+    const trimmedAgent = agentId.trim();
+    const trimmedSignedUrl = signedUrl.trim();
+    const trimmedToken = conversationToken.trim();
+
+    if (trimmedSignedUrl) {
+      return {
+        connectionType: 'websocket',
+        signedUrl: trimmedSignedUrl,
+        userId: userId.trim() || undefined,
+      };
+    }
+
+    if (trimmedToken) {
+      return {
+        connectionType: 'webrtc',
+        conversationToken: trimmedToken,
+        userId: userId.trim() || undefined,
+      };
+    }
+
+    if (!trimmedAgent) {
+      throw new Error('Provide an Agent ID or a signed URL / conversation token.');
+    }
+
+    return {
+      connectionType,
+      agentId: trimmedAgent,
+      userId: userId.trim() || undefined,
+    };
+  }, [agentId, signedUrl, conversationToken, connectionType, userId]);
+
+  const handleConnect = useCallback(async () => {
+    setIsConnecting(true);
+    setWidgetError(null);
+    try {
+      if (!textOnly && !micReady) {
+        await handleRequestMic();
+      }
+      const sessionConfig = buildSessionConfig();
+      await conversation.startSession(sessionConfig as any);
+      appendMessage({
+        role: 'system',
+        text: 'Agent connection requested.',
+      });
+    } catch (error) {
+      setWidgetError(error instanceof Error ? error.message : 'Unable to start agent session.');
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [appendMessage, buildSessionConfig, conversation, handleRequestMic, micReady, textOnly]);
+
+  const handleDisconnect = async () => {
+    try {
+      await conversation.endSession();
+      appendMessage({ role: 'system', text: 'Agent session closed.' });
+    } catch (error) {
+      setWidgetError(error instanceof Error ? error.message : 'Unable to end agent session.');
+    }
+  };
+
+  useEffect(() => {
+    if (!envAutoConnect || autoConnectAttempted || status !== 'disconnected' || isConnecting) {
+      return;
+    }
+    if (!hasAutoConfig) {
+      setAutoConnectAttempted(true);
+      return;
+    }
+
+    (async () => {
+      setAutoConnectAttempted(true);
+      try {
+        await handleConnect();
+      } catch (error) {
+        setWidgetError(
+          error instanceof Error ? error.message : 'Auto connection failed. Use the controls above.',
+        );
+      }
+    })();
+  }, [autoConnectAttempted, handleConnect, isConnecting, status]);
+
+  const handleSendText = () => {
+    if (!messageInput.trim()) {
+      return;
+    }
+    conversation.sendUserMessage(messageInput.trim());
+    appendMessage({ role: 'user', text: messageInput.trim() });
+    setMessageInput('');
+  };
+
+  const messageHeader = useMemo(() => {
+    if (!messages.length) {
+      return 'Agent activity will appear here after connection.';
+    }
+    return `Event feed (${messages.length})`;
+  }, [messages.length]);
+
+  return (
+    <div className="rounded-[2.5rem] bg-white/95 p-6 shadow-lg ring-1 ring-midnight-100">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-midnight-400">Hosted Agent</p>
+          <h2 className="text-lg font-semibold text-midnight-900">ElevenLabs Agents Widget</h2>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}>
+          {status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting…' : 'Idle'}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <label className="text-sm font-medium text-midnight-700">
+          Agent ID
+          <input
+            value={agentId}
+            onChange={(event) => setAgentId(event.target.value)}
+            placeholder="agent_123abc"
+            className="mt-1 w-full rounded-2xl border border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          />
+        </label>
+        <label className="text-sm font-medium text-midnight-700">
+          User ID (optional)
+          <input
+            value={userId}
+            onChange={(event) => setUserId(event.target.value)}
+            placeholder="user_demo"
+            className="mt-1 w-full rounded-2xl border border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          />
+        </label>
+        <label className="text-sm font-medium text-midnight-700">
+          Connection Type
+          <select
+            value={connectionType}
+            onChange={(event) =>
+              setConnectionType(event.target.value as (typeof connectionChoices)[number]['value'])
+            }
+            className="mt-1 w-full rounded-2xl border border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          >
+            {connectionChoices.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm font-medium text-midnight-700">
+          Server Location
+          <select
+            value={serverLocation}
+            onChange={(event) =>
+              setServerLocation(event.target.value as (typeof locationChoices)[number]['value'])
+            }
+            className="mt-1 w-full rounded-2xl border border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          >
+            {locationChoices.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <label className="text-sm font-medium text-midnight-700">
+          Signed URL (private WebSocket agents)
+          <input
+            value={signedUrl}
+            onChange={(event) => setSignedUrl(event.target.value)}
+            placeholder="https://api.elevenlabs.io/v1/convai/conversation/get-signed-url..."
+            className="mt-1 w-full rounded-2xl border border-dashed border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          />
+        </label>
+        <label className="text-sm font-medium text-midnight-700">
+          Conversation Token (private WebRTC agents)
+          <input
+            value={conversationToken}
+            onChange={(event) => setConversationToken(event.target.value)}
+            placeholder="token_xxx"
+            className="mt-1 w-full rounded-2xl border border-dashed border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="rounded-2xl border border-midnight-100 bg-midnight-50/60 px-4 py-3">
+          <p className="text-sm font-semibold text-midnight-900">Text only mode</p>
+          <p className="text-xs text-midnight-500">Skips microphone capture.</p>
+          <label className="mt-3 inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={textOnly}
+              onChange={(event) => setTextOnly(event.target.checked)}
+              className="h-4 w-4 rounded border-midnight-300 text-midnight-900 focus:ring-midnight-400"
+            />
+            <span className="text-sm text-midnight-800">Run without audio</span>
+          </label>
+        </div>
+
+        <div className="rounded-2xl border border-midnight-100 bg-midnight-50/60 px-4 py-3">
+          <p className="text-sm font-semibold text-midnight-900">Volume & Mic</p>
+          <div className="mt-3 flex items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-sm text-midnight-700">
+              <input
+                type="checkbox"
+                checked={micMuted}
+                onChange={(event) => setMicMuted(event.target.checked)}
+                className="h-4 w-4 rounded border-midnight-300 text-midnight-900 focus:ring-midnight-400"
+              />
+              Mute mic
+            </label>
+            <label className="flex-1 text-sm text-midnight-700">
+              Volume
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(event) => setVolume(Number(event.target.value))}
+                className="mt-2 h-1 w-full cursor-pointer rounded-full bg-midnight-200 accent-midnight-900"
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={handleRequestMic}
+          className="rounded-2xl border border-midnight-200 px-4 py-2 text-sm font-semibold text-midnight-800 transition hover:border-midnight-400"
+          disabled={textOnly}
+        >
+          {micReady || textOnly ? 'Microphone Ready' : 'Allow Microphone'}
+        </button>
+        <button
+          type="button"
+          onClick={handleConnect}
+          disabled={isConnecting || status === 'connected'}
+          className="rounded-2xl bg-midnight-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-midnight-800 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isConnecting ? 'Connecting…' : 'Connect'}
+        </button>
+        <button
+          type="button"
+          onClick={handleDisconnect}
+          disabled={status !== 'connected'}
+          className="rounded-2xl border border-midnight-200 px-4 py-2 text-sm font-semibold text-midnight-800 transition hover:border-midnight-400 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          Disconnect
+        </button>
+      </div>
+
+      {widgetError ? (
+        <p className="mt-3 rounded-2xl border border-blush/40 bg-blush/10 px-3 py-2 text-sm text-blush">
+          {widgetError}
+        </p>
+      ) : null}
+
+      <div className="mt-6 rounded-3xl border border-midnight-100 bg-midnight-50/70 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-midnight-500">
+          Manual Turn
+        </p>
+        <div className="mt-3 flex flex-col gap-3 md:flex-row">
+          <input
+            value={messageInput}
+            onChange={(event) => setMessageInput(event.target.value)}
+            placeholder="Type a message to send to the agent"
+            className="flex-1 rounded-2xl border border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
+          />
+          <button
+            type="button"
+            onClick={handleSendText}
+            disabled={!messageInput.trim()}
+            className="rounded-2xl bg-forest px-4 py-2 text-sm font-semibold text-white shadow hover:bg-forest/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Send Text
+          </button>
+        </div>
+        {canSendFeedback ? (
+          <div className="mt-4 flex gap-3 text-sm">
+            <button
+              type="button"
+              onClick={() => conversation.sendFeedback(true)}
+              className="flex-1 rounded-2xl border border-forest/30 px-3 py-2 font-semibold text-forest hover:bg-forest/10"
+            >
+              👍 Good
+            </button>
+            <button
+              type="button"
+              onClick={() => conversation.sendFeedback(false)}
+              className="flex-1 rounded-2xl border border-blush/40 px-3 py-2 font-semibold text-blush hover:bg-blush/10"
+            >
+              👎 Needs work
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-6 rounded-3xl bg-white/90 p-4 shadow-inner ring-1 ring-midnight-100">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-midnight-800">{messageHeader}</h3>
+          <span className="text-xs text-midnight-500">{conversation.isSpeaking ? 'Agent speaking' : 'Agent listening'}</span>
+        </div>
+        <div className="mt-3 max-h-64 space-y-3 overflow-y-auto pr-2">
+          {messages.length === 0 ? (
+            <p className="text-sm text-midnight-500">
+              Connect to your agent to stream turns, transcripts, tool calls, and metadata.
+            </p>
+          ) : (
+            messages.map((message) => (
+              <div
+                key={message.id}
+                className={`rounded-2xl border px-3 py-2 text-sm shadow-sm ${
+                  message.role === 'agent'
+                    ? 'border-midnight-200 bg-midnight-50/70'
+                    : message.role === 'user'
+                      ? 'border-forest/30 bg-forest/5'
+                      : 'border-midnight-100 bg-white'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs uppercase tracking-wide text-midnight-500">
+                  <span>{message.role}</span>
+                  {message.meta ? <span>{message.meta}</span> : null}
+                </div>
+                <p className="mt-1 text-midnight-900">{message.text}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(!envAutoConnect || !hasAutoConfig);

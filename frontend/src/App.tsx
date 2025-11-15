@@ -7,6 +7,7 @@ import { SessionLauncher } from './components/SessionLauncher';
 import { SummaryPanel } from './components/SummaryPanel';
 import { UtteranceForm } from './components/UtteranceForm';
 import { VoiceAgentPanel } from './components/VoiceAgentPanel';
+import { EmbeddedAgentPanel } from './components/EmbeddedAgentPanel';
 import { fetchSummary, sendUtterance, speakWithVoiceAgent, startConversation } from './lib/api';
 import type {
   AuthConfig,
@@ -223,6 +224,7 @@ function App() {
               isLoading={isSending}
               onSubmit={handleUtterance}
             />
+            <EmbeddedAgentPanel />
           </section>
 
           <aside className="space-y-6 lg:col-span-2">
