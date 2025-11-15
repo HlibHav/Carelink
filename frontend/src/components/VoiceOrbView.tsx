@@ -254,8 +254,15 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-midnight-900 via-midnight-800 to-midnight-900 px-6 py-12 text-white">
       <div className="text-center">
-        <p className="text-xs uppercase tracking-[0.4em] text-white/50">ElevenLabs Agent</p>
-        <h1 className="mt-2 text-3xl font-semibold">LifeCompanion Orb</h1>
+        <p className="text-xs uppercase tracking-[0.4em] text-white/50">Component Preview</p>
+        <h1 className="mt-2 text-3xl font-semibold">Orb</h1>
+        <p className="mt-3 text-sm text-white/70">
+          A 3D animated orb with audio reactivity, custom colors, and agent state visualization built
+          with Three.js.
+        </p>
+        <p className="mt-2 text-sm text-white/70">
+          An animated orb with flowing visuals and volume reactivity.
+        </p>
         <p className="mt-3 text-sm text-white/70">
           {error
             ? 'We hit a snag starting the conversation. Please check your agent credentials.'
