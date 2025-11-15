@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { config } from './config.js';
 import { runDialogueTurn } from './orchestrator/dialogueAgent.js';
+import { subscribeToSafetyCommands } from './subscribers/safetyCommandSubscriber.js';
 
 const app = express();
 
@@ -53,4 +54,5 @@ app.get('/healthz', (_req, res) => {
 
 app.listen(config.port, () => {
   console.log(`Dialogue Agent listening on port ${config.port}`);
+  subscribeToSafetyCommands();
 });

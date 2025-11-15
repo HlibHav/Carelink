@@ -4,6 +4,7 @@ import { publishEvent } from '../clients/eventBusClient.js';
 import { getMindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
 import { getPhysicalStateSummary } from '../clients/physicalEngineClient.js';
 import { retrieveDialogueContext, saveConversationTurn, storeFacts } from '../clients/memoryManagerClient.js';
+import { dequeueSafetyCommand } from '../queue/safetyCommandQueue.js';
 
 import { generateCoachReply } from './coachAgent.js';
 import { refineEmotionState } from './emotionAgent.js';
@@ -64,7 +65,18 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
     plan,
     context,
   });
-  const tone = determineTone(emotion, plan);
+  const pendingSafetyCommand = dequeueSafetyCommand(input.userId);
+  if (pendingSafetyCommand) {
+    coach.text = pendingSafetyCommand.prompt;
+    plan.mode = 'support';
+    plan.goal = 'reflect_feelings';
+    await publishEvent('safety.command.handled.v1', {
+      user_id: input.userId,
+      turn_id: pendingSafetyCommand.turnId,
+      handled_at: new Date().toISOString(),
+    });
+  }
+  const tone = pendingSafetyCommand ? 'serious_direct' : determineTone(emotion, plan);
 
   await saveConversationTurn(input.userId, {
     sessionId: input.sessionId,
@@ -120,5 +132,12 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
     plan,
     coach,
     tone,
+    safetyCommand: pendingSafetyCommand
+      ? {
+          prompt: pendingSafetyCommand.prompt,
+          reason: pendingSafetyCommand.reason,
+          escalation: pendingSafetyCommand.escalation,
+        }
+      : undefined,
   };
 }
