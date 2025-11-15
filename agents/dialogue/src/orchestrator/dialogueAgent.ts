@@ -7,6 +7,7 @@ import { retrieveDialogueContext, saveConversationTurn, storeFacts } from '../cl
 import { dequeueSafetyCommand } from '../queue/safetyCommandQueue.js';
 
 import { generateCoachReply } from './coachAgent.js';
+import { buildResponseGuidance } from './guidanceBuilder.js';
 import { refineEmotionState } from './emotionAgent.js';
 import { runListenerAgent } from './listenerAgent.js';
 import { planNextTurn } from './plannerAgent.js';
@@ -16,6 +17,8 @@ import type {
   DialogueAgentInput,
   DialogueAgentResult,
   EmotionState,
+  ModePlan,
+  ResponseGuidance,
 } from './types.js';
 
 async function buildConversationContext(userId: string, transcript: string): Promise<ConversationContext> {
@@ -43,8 +46,13 @@ async function buildConversationContext(userId: string, transcript: string): Pro
   };
 }
 
-function shouldTriggerCoach(planMode: string): boolean {
-  return planMode === 'coach';
+function shouldTriggerCoach(planMode: string, guidance: ResponseGuidance): boolean {
+  return (
+    planMode === 'coach' ||
+    planMode === 'reminder' ||
+    guidance.reminders.length > 0 ||
+    guidance.suggestedActivities.length > 0
+  );
 }
 
 function shouldTriggerSafety(context: ConversationContext, emotion: EmotionState): boolean {
@@ -58,12 +66,15 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
   const context = await buildConversationContext(input.userId, input.transcript);
   const listener = await runListenerAgent(input.transcript);
   const emotion = await refineEmotionState(listener, context.profile);
-  const plan = await planNextTurn({ emotion, context });
+  const initialPlan = await planNextTurn({ emotion, context });
+  const guidance = buildResponseGuidance({ context, listener, emotion });
+  const plan = adjustPlanWithGuidance(initialPlan, guidance);
   const coach = await generateCoachReply({
     listener,
     emotion,
     plan,
     context,
+    directives: guidance,
   });
   const pendingSafetyCommand = dequeueSafetyCommand(input.userId);
   if (pendingSafetyCommand) {
@@ -103,13 +114,28 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
     );
   }
 
-  if (shouldTriggerCoach(plan.mode)) {
+  if (!coach.reminders?.length && guidance.reminders.length) {
+    coach.reminders = guidance.reminders.slice(0, 2);
+  }
+  if (!coach.proposedActivities?.length && guidance.suggestedActivities.length) {
+    coach.proposedActivities = guidance.suggestedActivities.slice(0, 2);
+  }
+  if (!coach.healthSummary && guidance.healthSummary) {
+    coach.healthSummary = guidance.healthSummary;
+  }
+  if (!coach.personalizationNote && guidance.personalizationNote) {
+    coach.personalizationNote = guidance.personalizationNote;
+  }
+
+  const coachTriggerReason = determineCoachTriggerReason(plan, guidance);
+
+  if (coachTriggerReason && shouldTriggerCoach(plan.mode, guidance)) {
     await publishEvent('coach.trigger.v1', {
       user_id: input.userId,
       turn_id: turnId,
       requested_mode: plan.mode,
       goal: plan.goal,
-      reason: 'plan_mode_coach',
+      reason: coachTriggerReason,
       created_at: new Date().toISOString(),
     });
   }
@@ -140,4 +166,29 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
         }
       : undefined,
   };
+}
+
+function adjustPlanWithGuidance(plan: ModePlan, guidance: ResponseGuidance): ModePlan {
+  const updatedPlan: ModePlan = { ...plan };
+  if (guidance.reminders.length && plan.mode !== 'reminder') {
+    updatedPlan.mode = 'reminder';
+    updatedPlan.goal = 'check_in_on_goal';
+  } else if (guidance.suggestedActivities.length && plan.mode === 'support') {
+    updatedPlan.mode = 'coach';
+    updatedPlan.goal = 'suggest_tiny_step';
+  }
+  return updatedPlan;
+}
+
+function determineCoachTriggerReason(plan: ModePlan, guidance: ResponseGuidance): string | null {
+  if (plan.mode === 'coach') {
+    return 'plan_mode_coach';
+  }
+  if (plan.mode === 'reminder' || guidance.reminders.length) {
+    return 'routine_follow_up';
+  }
+  if (guidance.suggestedActivities.length) {
+    return 'social_boost';
+  }
+  return null;
 }

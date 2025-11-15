@@ -6,8 +6,11 @@ import type {
   DialogueAgentRequest,
   DialogueAgentResponse,
   EmotionState,
+  HealthSummary,
   ListenerResult,
   ModePlan,
+  RoutineReminder,
+  SuggestedActivity,
 } from '@carelink/conversation-types';
 
 export type DialogueAgentInput = DialogueAgentRequest;
@@ -18,6 +21,9 @@ export type {
   EmotionState,
   ListenerResult,
   ModePlan,
+  RoutineReminder,
+  SuggestedActivity,
+  HealthSummary,
 } from '@carelink/conversation-types';
 
 export interface ConversationContext {
@@ -35,4 +41,16 @@ export interface SafetyCommandContext {
   prompt: string;
   reason?: string;
   escalation?: string;
+}
+
+export interface ResponseGuidance {
+  preferredName?: string;
+  identityFacts: string[];
+  gratitudeHighlights: string[];
+  reminders: RoutineReminder[];
+  suggestedActivities: SuggestedActivity[];
+  healthSummary?: HealthSummary | null;
+  planningCues: string[];
+  socialTopics: string[];
+  personalizationNote?: string;
 }

@@ -1,7 +1,14 @@
 import { getOpenAIClient, openAiModels } from '../services/openAIClient.js';
 
 import { loadPrompt } from './promptLoader.js';
-import type { CoachResponse, ConversationContext, EmotionState, ListenerResult, ModePlan } from './types.js';
+import type {
+  CoachResponse,
+  ConversationContext,
+  EmotionState,
+  ListenerResult,
+  ModePlan,
+  ResponseGuidance,
+} from './types.js';
 
 const systemPrompt = `${loadPrompt('system-life-companion.md')}\n\n${loadPrompt('agent-coach.md')}`;
 
@@ -10,6 +17,7 @@ interface CoachInput {
   emotion: EmotionState;
   plan: ModePlan;
   context: ConversationContext;
+  directives: ResponseGuidance;
 }
 
 export async function generateCoachReply(input: CoachInput): Promise<CoachResponse> {
@@ -38,6 +46,15 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
     .filter(Boolean)
     .join('\n\n');
 
+  const instructions = {
+    transcript: input.listener.transcript,
+    summary: input.listener.summary,
+    emotion: input.emotion,
+    plan: input.plan,
+    context_blocks: contextBlocks,
+    directives: input.directives,
+  };
+
   const completion = await client.chat.completions.create({
     model: openAiModels.chat,
     temperature: 0.7,
@@ -49,13 +66,7 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
       },
       {
         role: 'user',
-        content: JSON.stringify({
-          transcript: input.listener.transcript,
-          summary: input.listener.summary,
-          emotion: input.emotion,
-          plan: input.plan,
-          context: contextBlocks,
-        }),
+        content: JSON.stringify(instructions),
       },
     ],
   });
@@ -68,9 +79,20 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
     parsed = { text: content };
   }
 
-  return {
+  const enriched: CoachResponse = {
     text: parsed.text ?? content ?? '',
     actions: parsed.actions ?? [],
     reasoning: parsed.reasoning,
+    reminders: Array.isArray(parsed.reminders) ? parsed.reminders : input.directives.reminders,
+    proposedActivities: Array.isArray(parsed.proposedActivities)
+      ? parsed.proposedActivities
+      : input.directives.suggestedActivities,
+    healthSummary:
+      typeof parsed.healthSummary === 'object' && parsed.healthSummary !== null
+        ? parsed.healthSummary
+        : input.directives.healthSummary ?? null,
+    personalizationNote: parsed.personalizationNote ?? input.directives.personalizationNote,
   };
+
+  return enriched;
 }
