@@ -1,5 +1,7 @@
 import type {
   AuthConfig,
+  ElevenLabsDialogueTurnRequest,
+  ElevenLabsDialogueTurnResponse,
   SessionSummary,
   StartConversationPayload,
   StartConversationResponse,
@@ -115,4 +117,11 @@ export interface ElevenLabsAgentConfig {
 
 export function getElevenLabsAgentConfig(auth: AuthConfig): Promise<ElevenLabsAgentConfig> {
   return request('/elevenlabs/agent-config', { method: 'GET' }, auth);
+}
+
+export function sendElevenLabsDialogueTurn(
+  payload: ElevenLabsDialogueTurnRequest,
+  auth: AuthConfig,
+): Promise<ElevenLabsDialogueTurnResponse> {
+  return request('/elevenlabs/dialogue-turn', { method: 'POST', body: JSON.stringify(payload) }, auth);
 }

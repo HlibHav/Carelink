@@ -52,6 +52,7 @@ MEMORY_MANAGER_URL=http://localhost:4103
 | `POST /api/start-conversation` | Creates a session and returns WebSocket/SSE endpoints |
 | `POST /api/user-utterance` | Runs the multi-agent orchestrator (Whisper → LLM → RAG → ElevenLabs) for a session turn |
 | `GET /api/session-summary?sessionId=...` | Returns nightly summary placeholder data |
+| `POST /api/elevenlabs/dialogue-turn` | Invokes the Dialogue Orchestrator for ElevenLabs hosted agents |
 
 All `/api/*` routes require:
 - `Authorization: Bearer <token>`

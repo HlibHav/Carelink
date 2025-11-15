@@ -102,3 +102,47 @@ export interface VoiceAgentResponse {
     dataUri: string;
   };
 }
+
+export interface EmotionState {
+  primary: string;
+  intensity: 'low' | 'medium' | 'high';
+  energy: 'low' | 'medium' | 'high';
+  socialNeed: 'wants_connection' | 'wants_space' | 'wants_guidance' | 'unknown';
+  reasoning?: string;
+}
+
+export interface ModePlan {
+  mode: 'support' | 'coach' | 'gratitude' | 'game' | 'reminder';
+  goal:
+    | 'reflect_feelings'
+    | 'clarify_goal'
+    | 'suggest_tiny_step'
+    | 'celebrate_progress'
+    | 'ask_gratitude'
+    | 'lighten_mood'
+    | 'check_in_on_goal';
+  coachIntensity: 'low' | 'medium' | 'high';
+}
+
+export interface ElevenLabsDialogueTurnRequest {
+  transcript: string;
+  sessionId?: string;
+  userId?: string;
+  locale?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ElevenLabsDialogueTurnResponse {
+  turnId: string;
+  transcript: string;
+  text: string;
+  tone: string;
+  plan: ModePlan;
+  emotion: EmotionState;
+  listener: {
+    transcript: string;
+    summary: string;
+    facts: Array<{ text: string; type?: string }>;
+    intents: string[];
+  };
+}

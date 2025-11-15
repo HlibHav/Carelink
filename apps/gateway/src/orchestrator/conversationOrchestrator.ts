@@ -1,15 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
-import { elevenLabsService } from '../services/elevenLabsService.js';
-import { transcribeAudio } from '../services/sttService.js';
-import { errors } from '../shared/httpErrors.js';
-import { getMindBehaviorStateSummary } from '../clients/mindBehaviorEngineClient.js';
-import { getPhysicalStateSummary } from '../clients/physicalEngineClient.js';
 import {
   retrieveDialogueContext,
   saveConversationTurn,
   storeCandidateMemories,
 } from '../clients/memoryManagerClient.js';
+import { getMindBehaviorStateSummary } from '../clients/mindBehaviorEngineClient.js';
+import { getPhysicalStateSummary } from '../clients/physicalEngineClient.js';
+import { elevenLabsService } from '../services/elevenLabsService.js';
+import { transcribeAudio } from '../services/sttService.js';
+import { errors } from '../shared/httpErrors.js';
 
 import { generateCoachReply } from './coachAgent.js';
 import { refineEmotionState } from './emotionAgent.js';
