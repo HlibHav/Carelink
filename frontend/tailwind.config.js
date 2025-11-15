@@ -21,7 +21,33 @@ export default {
         forest: '#0f8c79',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['"Source Sans 3"', 'system-ui', 'sans-serif'],
+        display: ['"Playfair Display"', '"Source Sans 3"', 'serif'],
+      },
+      keyframes: {
+        orbPulse: {
+          '0%, 100%': { transform: 'scale(0.92)', boxShadow: '0 0 40px rgba(255,255,255,0.25)' },
+          '50%': { transform: 'scale(1.04)', boxShadow: '0 0 60px rgba(255,255,255,0.45)' },
+        },
+        orbSpeak: {
+          '0%, 100%': { transform: 'scale(1)', filter: 'brightness(1)' },
+          '50%': { transform: 'scale(1.12)', filter: 'brightness(1.2)' },
+        },
+        aurora: {
+          '0%, 100%': {
+            transform: 'translate3d(0,0,0) scale(1)',
+            opacity: 0.8,
+          },
+          '50%': {
+            transform: 'translate3d(-5%, -5%, 0) scale(1.05)',
+            opacity: 1,
+          },
+        },
+      },
+      animation: {
+        orbPulse: 'orbPulse 2.8s ease-in-out infinite',
+        orbSpeak: 'orbSpeak 1.6s ease-in-out infinite',
+        aurora: 'aurora 6s ease-in-out infinite',
       },
     },
   },
