@@ -31,11 +31,13 @@ async function fetchSafetyProfile(userId: string) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+type SSEMessage = { data?: string };
+
 function connectToBus() {
   const source = new EventSource(`${eventBusUrl}/events/stream/safety.trigger.v1`);
   console.log('Safety Agent subscribed to safety.trigger.v1');
 
-  source.onmessage = async (event) => {
+  source.onmessage = async (event: SSEMessage) => {
     if (!event.data) {
       return;
     }
@@ -46,7 +48,7 @@ function connectToBus() {
         console.warn('Safety Agent invalid payload', payload);
         return;
       }
-      const profile = await fetchSafetyProfile(parsed.data.user_id).catch((error) => {
+      const profile = await fetchSafetyProfile(parsed.data.user_id).catch((error: unknown) => {
         console.error('Safety Agent profile fetch failed', error);
         return null;
       });
@@ -61,7 +63,7 @@ function connectToBus() {
     }
   };
 
-  source.onerror = (error) => {
+  source.onerror = (error: unknown) => {
     console.error('Safety Agent SSE error', error);
   };
 }

@@ -32,11 +32,13 @@ async function fetchCoachContext(userId: string) {
   return response.json() as Promise<Record<string, unknown>>;
 }
 
+type SSEMessage = { data?: string };
+
 function connectToEventBus() {
   const source = new EventSource(`${eventBusUrl}/events/stream/coach.trigger.v1`);
   console.log('Coach Agent subscribed to coach.trigger.v1');
 
-  source.onmessage = async (message) => {
+  source.onmessage = async (message: SSEMessage) => {
     if (!message.data) {
       return;
     }
@@ -47,23 +49,26 @@ function connectToEventBus() {
         console.warn('Coach Agent received invalid payload', payload);
         return;
       }
-      const context = await fetchCoachContext(parsed.data.user_id).catch((error) => {
+      const context = await fetchCoachContext(parsed.data.user_id).catch((error: unknown) => {
         console.error('Coach Agent memory fetch failed', error);
         return null;
       });
+      const goals = Array.isArray((context as { goals?: unknown[] } | null)?.goals)
+        ? (context as { goals?: unknown[] } | null)?.goals
+        : [];
       console.log('Coach Agent handling trigger', {
         userId: parsed.data.user_id,
         turnId: parsed.data.turn_id,
         requestedMode: parsed.data.requested_mode,
         goal: parsed.data.goal,
-        contextSummary: context?.goals?.length ?? 0,
+        contextSummary: goals?.length ?? 0,
       });
     } catch (error) {
       console.error('Coach Agent event parse error', error);
     }
   };
 
-  source.onerror = (error) => {
+  source.onerror = (error: unknown) => {
     console.error('Coach Agent SSE error', error);
   };
 }

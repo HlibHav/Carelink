@@ -71,7 +71,7 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
     turnId: `${turnId}_user`,
     role: 'user',
     text: input.transcript,
-    emotion,
+    emotion: emotion as unknown as Record<string, unknown>,
     metadata: input.metadata,
   });
 
@@ -80,7 +80,7 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
     turnId: `${turnId}_assistant`,
     role: 'assistant',
     text: coach.text,
-    emotion,
+    emotion: emotion as unknown as Record<string, unknown>,
     mode: plan.mode,
   });
 
