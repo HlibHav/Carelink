@@ -17,14 +17,15 @@
     - Play back audio responses
 
 - **Database**
-  - **Firestore (Native mode)**
+  - **Weaviate**: Vector database for semantic memory search
+  - **Firestore (Native mode)**: Metadata storage (profiles, sessions, playbooks)
 
 - **AI / ML**
   - **OpenAI**:
     - `gpt-4.1` or `gpt-4.1-mini` for LLM calls
     - `gpt-4o-mini` or `gpt-4.1-mini` for emotion/mode/aux tasks
     - `whisper-1` for speech-to-text
-    - `text-embedding-3-small` for embeddings
+    - `text-embedding-3-small` for embeddings (via Weaviate's text2vec-openai module)
   - **ElevenLabs**:
     - `text-to-speech` endpoint with a single voice
   - **Langchain / Langgraph**:

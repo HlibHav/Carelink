@@ -31,23 +31,36 @@ These endpoints handle batch processing and can tolerate higher latency:
 
 ## Storage
 
-The service uses Firestore with the following collections:
+The service uses a **hybrid approach**:
 
+### Weaviate (Vector Database)
+- Stores vector embeddings for semantic search
+- Collection: `Memory`
+- Properties: userId, category, text, importance, factType, goalStatus, metadata, timestamps
+- Automatic embedding generation via `text2vec-openai`
+
+### Firestore (Metadata Storage)
 - `users/{userId}` - Root user document
 - `users/{userId}/profile` - User profile data
-- `users/{userId}/facts` - Life facts
-- `users/{userId}/goals` - User goals
-- `users/{userId}/gratitude` - Gratitude entries
+- `users/{userId}/facts` - Life facts metadata (references Weaviate via `weaviateId`)
+- `users/{userId}/goals` - User goals metadata (references Weaviate via `weaviateId`)
+- `users/{userId}/gratitude` - Gratitude entries metadata (references Weaviate via `weaviateId`)
 - `users/{userId}/conversations/{sessionId}` - Conversation sessions
 - `users/{userId}/conversations/{sessionId}/turns/{turnId}` - Conversation turns
+- `users/{userId}/playbooks/{playbookId}` - ACE playbooks
 
 ## Configuration
 
 Environment variables:
 
 - `PORT` - Server port (default: 4103)
-- `GOOGLE_PROJECT_ID` - Google Cloud project ID
+- `GOOGLE_PROJECT_ID` - Google Cloud project ID (for Firestore)
+- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON (for Firestore)
 - `FIRESTORE_EMULATOR_HOST` - Firestore emulator host (for local development)
+- `WEAVIATE_HOST` - Weaviate host (default: localhost)
+- `WEAVIATE_PORT` - Weaviate port (default: 8082)
+- `WEAVIATE_SCHEME` - Weaviate scheme (http or https, default: http)
+- `OPENAI_API_KEY` - OpenAI API key (required for text2vec-openai vectorizer)
 
 ## Development
 

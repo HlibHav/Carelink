@@ -1,6 +1,32 @@
 import dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const envFromEnvDir = resolve(__dirname, '../../../.env/.env');
+const envFromRoot = resolve(__dirname, '../../../.env');
+const envPath = existsSync(envFromEnvDir)
+  ? envFromEnvDir
+  : existsSync(envFromRoot)
+    ? envFromRoot
+    : undefined;
+
+if (envPath) {
+  dotenv.config({ path: envPath });
+  console.log(`[Dialogue Config] Loaded env from ${envPath}`);
+} else {
+  console.warn('[Dialogue Config] .env path not found, falling back to default search');
+  dotenv.config();
+}
+
+if (process.env.OPENAI_API_KEY) {
+  console.log('[Dialogue Config] OPENAI_API_KEY detected');
+} else {
+  console.warn('[Dialogue Config] OPENAI_API_KEY is missing after loading env');
+}
 
 const defaultOrigins = ['http://localhost:5173', 'http://localhost:5174'];
 const allowedOrigins = (() => {
@@ -14,9 +40,11 @@ const allowedOrigins = (() => {
   return defaultOrigins;
 })();
 
+const resolvedPort = Number(process.env.DIALOGUE_AGENT_PORT ?? process.env.PORT ?? 4200);
+
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
-  port: Number(process.env.PORT ?? 4200),
+  port: resolvedPort,
   allowedOrigins,
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',

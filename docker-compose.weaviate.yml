@@ -1,0 +1,27 @@
+services:
+  weaviate:
+    image: semitechnologies/weaviate:1.24.0
+    container_name: carelink-weaviate
+    ports:
+      - "8082:8080"
+      - "50051:50051"
+    environment:
+      - QUERY_DEFAULTS_LIMIT=25
+      - AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true
+      - PERSISTENCE_DATA_PATH=/var/lib/weaviate
+      - DEFAULT_VECTORIZER_MODULE=text2vec-openai
+      - ENABLE_MODULES=text2vec-openai,generative-openai
+      - CLUSTER_HOSTNAME=node1
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    restart: on-failure:0
+    networks:
+      - carelink-network
+
+volumes:
+  weaviate_data:
+
+networks:
+  carelink-network:
+    driver: bridge
+

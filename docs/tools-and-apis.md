@@ -177,21 +177,37 @@ In the code, we'll map our ToneParams to ElevenLabs voice settings using these c
 - Containerized backend
 - Exposed as HTTPS endpoint
 
+### Weaviate
+
+**Vector Database** for semantic memory search:
+
+- **Collection**: `Memory`
+- **Vectorizer**: `text2vec-openai` (text-embedding-3-small, 1536 dimensions)
+- **Properties**: userId, category, text, importance, factType, goalStatus, metadata, timestamps
+- **Client**: `@carelink/weaviate-client`
+- **Usage**: Semantic search for facts, goals, gratitude entries
+
+See `docs/weaviate-setup.md` for setup instructions.
+
 ### Firestore
+
+**Metadata Storage** (not for vector embeddings):
 
 - Node/TS SDK:
   - `@google-cloud/firestore`
 - Usage:
-  - `users/{userId}`
+  - `users/{userId}` - Root user document
   - Subcollections:
-    - `profile`
-    - `conversations`
-    - `facts`
-    - `goals`
-    - `gratitude`
-    - `mood_snapshots`
+    - `profile` - User profile data
+    - `conversations` - Conversation sessions
+    - `facts` - Facts metadata (vectors in Weaviate)
+    - `goals` - Goals metadata (vectors in Weaviate)
+    - `gratitude` - Gratitude metadata (vectors in Weaviate)
+    - `mood_snapshots` - Daily mood aggregates
+    - `playbooks` - ACE playbooks
 - Fields:
   - See `memory.md`
+- **Note**: Vector embeddings are stored in Weaviate, not Firestore. Firestore stores metadata and references via `weaviateId`.
 
 ### Optional: Cloud Storage
 

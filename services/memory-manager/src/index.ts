@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import type { Playbook } from '@carelink/memory-storage';
 import { getFirestore } from '@carelink/memory-storage';
+import { getWeaviateClient, insertMemory, searchMemories } from '@carelink/weaviate-client';
 
 import { config } from './config.js';
 
@@ -17,6 +18,14 @@ const db = getFirestore({
   projectId: config.firestore.projectId,
   emulatorHost: config.firestore.emulatorHost,
   keyFilename: config.firestore.keyFilename,
+});
+
+// Initialize Weaviate client for vector search
+const weaviateClient = getWeaviateClient({
+  host: config.weaviate.host,
+  port: config.weaviate.port,
+  scheme: config.weaviate.scheme,
+  apiKey: config.weaviate.apiKey,
 });
 
 // ============================================================================
@@ -195,7 +204,10 @@ function applyRetrievalStrategies(
   const applicableStrategies = playbook.sections.retrieval_strategies.filter((strategy) => {
     if (!strategy.condition) return false;
     // Simple condition matching (in production, use a proper condition evaluator)
-    const emotionMatch = !context.emotion || strategy.condition.includes(`emotion=${context.emotion.primary}`);
+    const emotionPrimary = context.emotion && typeof context.emotion === 'object' && 'primary' in context.emotion 
+      ? String(context.emotion.primary) 
+      : undefined;
+    const emotionMatch = !emotionPrimary || strategy.condition.includes(`emotion=${emotionPrimary}`);
     const modeMatch = !context.mode || strategy.condition.includes(`mode=${context.mode}`);
     return emotionMatch && modeMatch;
   });
@@ -254,6 +266,7 @@ function applyContextEngineeringRules(
 
 // DAYTIME: Store candidate memories (facts, goals, gratitude, etc.)
 // Called immediately after conversation turns to persist extracted memories
+// Now stores in both Firestore (metadata) and Weaviate (vectors)
 app.post('/memory/:userId/store-candidate', async (req, res) => {
   const parsed = storeCandidateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -261,17 +274,48 @@ app.post('/memory/:userId/store-candidate', async (req, res) => {
     return;
   }
 
-  const userRef = await ensureUserDocument(req.params.userId);
+  const userId = req.params.userId;
+  const now = new Date().toISOString();
+
+  // Store in Firestore for metadata and Weaviate for vector search
   await Promise.all(
     parsed.data.items.map(async (item) => {
+      const memoryId = randomUUID();
+      
+      // Store metadata in Firestore
+      const userRef = await ensureUserDocument(userId);
       const colRef = userRef.collection(item.category);
-      const docRef = colRef.doc();
+      const docRef = colRef.doc(memoryId);
       await docRef.set({
         text: item.text,
         importance: item.importance,
         metadata: item.metadata ?? null,
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        weaviateId: memoryId, // Reference to Weaviate object
       });
+
+      // Store in Weaviate for vector search
+      // Extract category-specific fields from metadata
+      const metadata = item.metadata ?? {};
+      const weaviateMemory: Parameters<typeof insertMemory>[1] = {
+        id: memoryId,
+        userId,
+        category: item.category,
+        text: item.text,
+        importance: item.importance,
+        metadata,
+        createdAt: now,
+      };
+
+      // Add category-specific fields if present in metadata
+      if (item.category === 'facts' && typeof metadata.type === 'string') {
+        weaviateMemory.factType = metadata.type as 'family' | 'hobby' | 'health' | 'routine';
+      }
+      if (item.category === 'goals' && typeof metadata.status === 'string') {
+        weaviateMemory.goalStatus = metadata.status as 'active' | 'done';
+      }
+
+      await insertMemory(weaviateClient, weaviateMemory);
     }),
   );
 
@@ -323,16 +367,62 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
     return;
   }
 
-  const query = parsed.data.query.trim().toLowerCase();
+  const query = parsed.data.query.trim();
+  const userId = req.params.userId;
 
-  // Load playbook and context
-  const [facts, goals, gratitude, profile, lastConversation, playbook] = await Promise.all([
-    fetchRecentEntries(req.params.userId, 'facts'),
-    fetchRecentEntries(req.params.userId, 'goals'),
-    fetchRecentEntries(req.params.userId, 'gratitude'),
-    fetchProfile(req.params.userId),
-    fetchLastConversationSnapshot(req.params.userId),
-    loadPlaybook(req.params.userId),
+  // Use Weaviate for semantic search if query is provided
+  // Otherwise fall back to Firestore for recent entries
+  let facts: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> = [];
+  let goals: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> = [];
+  let gratitude: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> = [];
+
+  if (query.length > 0) {
+    // Semantic search using Weaviate - filter by category directly
+    const [factsResults, goalsResults, gratitudeResults] = await Promise.all([
+      searchMemories(weaviateClient, query, userId, { limit: 20, returnMetadata: true, category: 'facts' }),
+      searchMemories(weaviateClient, query, userId, { limit: 20, returnMetadata: true, category: 'goals' }),
+      searchMemories(weaviateClient, query, userId, { limit: 20, returnMetadata: true, category: 'gratitude' }),
+    ]);
+
+    // Map to expected format
+    facts = factsResults.map((r) => ({
+      id: r.id,
+      text: r.properties.text,
+      category: r.properties.category,
+      importance: r.properties.importance,
+      metadata: r.properties.metadata,
+      createdAt: r.properties.createdAt,
+    }));
+    goals = goalsResults.map((r) => ({
+      id: r.id,
+      text: r.properties.text,
+      category: r.properties.category,
+      importance: r.properties.importance,
+      metadata: r.properties.metadata,
+      createdAt: r.properties.createdAt,
+    }));
+    gratitude = gratitudeResults.map((r) => ({
+      id: r.id,
+      text: r.properties.text,
+      category: r.properties.category,
+      importance: r.properties.importance,
+      metadata: r.properties.metadata,
+      createdAt: r.properties.createdAt,
+    }));
+  } else {
+    // Fallback to Firestore for recent entries when no query
+    [facts, goals, gratitude] = await Promise.all([
+      fetchRecentEntries(userId, 'facts'),
+      fetchRecentEntries(userId, 'goals'),
+      fetchRecentEntries(userId, 'gratitude'),
+    ]);
+  }
+
+  // Load profile, conversation, and playbook from Firestore
+  const [profile, lastConversation, playbook] = await Promise.all([
+    fetchProfile(userId),
+    fetchLastConversationSnapshot(userId),
+    loadPlaybook(userId),
   ]);
 
   // Apply retrieval strategies from playbook
@@ -341,14 +431,20 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
     mode: lastConversation?.lastMode as string | undefined,
   };
 
+  // Apply ACE retrieval strategies
   let filteredFacts = applyRetrievalStrategies(facts as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, context);
   let filteredGoals = applyRetrievalStrategies(goals as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, context);
   let filteredGratitude = applyRetrievalStrategies(gratitude as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, context);
 
-  // Apply context engineering rules
+  // Apply ACE context engineering rules
   filteredFacts = applyContextEngineeringRules(filteredFacts as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, query);
   filteredGoals = applyContextEngineeringRules(filteredGoals as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, query);
   filteredGratitude = applyContextEngineeringRules(filteredGratitude as Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>, playbook, query);
+
+  // Log ACE application for debugging
+  if (playbook) {
+    console.log(`[ACE] Applied playbook v${playbook.metadata.version} for user ${userId}: ${filteredFacts.length} facts, ${filteredGoals.length} goals, ${filteredGratitude.length} gratitude`);
+  }
 
   // Apply query-based filtering
   const filterByQuery = (items: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>) =>

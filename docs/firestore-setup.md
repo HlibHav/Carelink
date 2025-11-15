@@ -2,7 +2,9 @@
 
 ## Overview
 
-CareLink uses Google Cloud Firestore for storing user data, memories, conversations, and ACE playbooks.
+CareLink uses Google Cloud Firestore for storing **metadata** (user profiles, conversation sessions, ACE playbooks). 
+
+**Note**: Vector embeddings for semantic search are stored in **Weaviate**, not Firestore. See `docs/weaviate-setup.md` for Weaviate configuration.
 
 ## Configuration
 
@@ -55,9 +57,9 @@ Firestore collections follow this structure:
 ```
 users/{userId}/
   ├── profile (document)
-  ├── facts/ (subcollection)
-  ├── goals/ (subcollection)
-  ├── gratitude/ (subcollection)
+  ├── facts/ (subcollection) - Metadata only, vectors in Weaviate
+  ├── goals/ (subcollection) - Metadata only, vectors in Weaviate
+  ├── gratitude/ (subcollection) - Metadata only, vectors in Weaviate
   ├── conversations/ (subcollection)
   │   └── {sessionId}/
   │       └── turns/ (subcollection)
