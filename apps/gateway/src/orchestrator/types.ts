@@ -1,6 +1,6 @@
+import type { MemoryEntry } from '../clients/memoryManagerClient.js';
 import type { MindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
 import type { PhysicalStateSummary } from '../clients/physicalEngineClient.js';
-import type { MemoryEntry } from '../clients/memoryManagerClient.js';
 
 export interface ListenerResult {
   transcript: string;

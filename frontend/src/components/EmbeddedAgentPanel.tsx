@@ -2,6 +2,7 @@ import { Conversation } from '@elevenlabs/client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getElevenLabsAgentConfig } from '../lib/api.js';
+import { createDialogueClientTools } from '../lib/elevenLabsTools.js';
 import type { AuthConfig } from '../lib/types.js';
 
 type ConversationInstance = Awaited<ReturnType<typeof Conversation.startSession>>;
@@ -105,6 +106,25 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
   const [canSendFeedback, setCanSendFeedback] = useState(false);
 
   const conversationRef = useRef<ConversationInstance | null>(null);
+  const dialogueClientTools = useMemo(
+    () =>
+      createDialogueClientTools({
+        auth,
+        defaultUserId: userId,
+        onResult: (result) => {
+          appendMessage({
+            role: 'system',
+            text: `Dialogue orchestrator: ${result.text}`,
+            meta: `tone ${result.tone}`,
+          });
+        },
+        onError: (message, error, parameters) => {
+          debugLog('Dialogue orchestrator tool error', { message, parameters, error });
+          setWidgetError(message);
+        },
+      }),
+    [appendMessage, auth, setWidgetError, userId],
+  );
 
   // Auto-load agent configuration from backend
   useEffect(() => {
@@ -309,6 +329,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       const sessionConfig = buildSessionConfig();
       const conversation = await Conversation.startSession({
         ...sessionConfig,
+        ...(dialogueClientTools ?? {}),
         onStatusChange: (next: any) => {
           const value =
             typeof next === 'string'
@@ -363,6 +384,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     appendMessage,
     buildSessionConfig,
     cleanUpConversation,
+    dialogueClientTools,
     handleIncomingEvent,
     handleRequestMic,
     isConnecting,

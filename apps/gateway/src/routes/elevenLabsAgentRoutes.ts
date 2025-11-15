@@ -1,8 +1,8 @@
-import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { config } from '../config.js';
+import { runConversationPipeline } from '../orchestrator/conversationOrchestrator.js';
 import { asyncHandler } from '../shared/asyncHandler.js';
 import { errors } from '../shared/httpErrors.js';
 
@@ -15,17 +15,6 @@ const debugLog = (...parts: unknown[]) => {
   const prefix = `[ElevenLabsAgentRoutes ${new Date().toISOString()}]`;
   console.debug(prefix, ...parts);
 };
-
-function getElevenLabsClient(): ElevenLabsClient {
-  if (!config.elevenLabs.apiKey) {
-    throw errors.serviceUnavailable('ElevenLabs API key is not configured.');
-  }
-
-  return new ElevenLabsClient({
-    apiKey: () => config.elevenLabs.apiKey,
-    baseUrl: () => config.elevenLabs.baseUrl,
-  });
-}
 
 // GET /api/elevenlabs/agent-config - Get agent configuration (Agent ID + conversation token)
 elevenLabsAgentRouter.get(
@@ -96,5 +85,57 @@ elevenLabsAgentRouter.get(
           : 'Unable to get agent configuration from ElevenLabs',
       );
     }
+  }),
+);
+
+const dialogueTurnSchema = z.object({
+  userId: z.string().min(1).optional(),
+  sessionId: z.string().min(1).optional(),
+  transcript: z.string().min(1, 'Transcript is required'),
+  locale: z.string().min(2).max(10).default('en-US'),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+// POST /api/elevenlabs/dialogue-turn - Run Dialogue Orchestrator for ElevenLabs tool calls
+elevenLabsAgentRouter.post(
+  '/dialogue-turn',
+  asyncHandler(async (req, res) => {
+    const parsed = dialogueTurnSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw errors.badRequest('Invalid dialogue turn payload', {
+        issues: parsed.error.issues,
+      });
+    }
+
+    const requestUserId = parsed.data.userId?.trim() || req.userId;
+    if (!requestUserId) {
+      throw errors.badRequest('userId is required via body or headers');
+    }
+
+    const resolvedSessionId =
+      parsed.data.sessionId?.trim() ||
+      req.get('x-session-id')?.trim() ||
+      `elevenlabs_${requestUserId}`;
+
+    const result = await runConversationPipeline({
+      userId: requestUserId,
+      sessionId: resolvedSessionId,
+      transcript: parsed.data.transcript.trim(),
+      locale: parsed.data.locale,
+      metadata: {
+        source: 'elevenlabs-hosted-agent',
+        ...(parsed.data.metadata ?? {}),
+      },
+    });
+
+    res.json({
+      turnId: result.turnId,
+      transcript: result.transcript,
+      text: result.coach.text,
+      tone: result.tone,
+      plan: result.plan,
+      emotion: result.emotion,
+      listener: result.listener,
+    });
   }),
 );
