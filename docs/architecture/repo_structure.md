@@ -8,9 +8,9 @@ Everything here mirrors the architecture outlined in `docs/architecture/carelink
 ```
 Carelink/
 ├─ agents/
-│  ├─ dialogue/            # Turn-by-turn orchestrator, tone selector, memory writes
-│  ├─ coach/               # Long-horizon planning, scheduling, script generation
-│  ├─ safety/              # Alert routing, escalation policy, caregiver comms
+│  ├─ dialogue/            # Turn-by-turn orchestrator service (calls engines/memory)
+│  ├─ coach/               # Long-horizon planning agent listening on Event Bus topics
+│  ├─ safety/              # Alert routing + escalation policies consuming Event Bus
 │  └─ memory-nightly/      # Night agent for memory compression/digests
 ├─ engines/
 │  ├─ physical/            # Deterministic vitals + mobility analytics + alerts
@@ -18,7 +18,7 @@ Carelink/
 ├─ services/
 │  ├─ memory-manager/      # API layer in front of Memory Store + User Twin
 │  ├─ language/            # STT, TTS, NLU, tone selector utilities
-│  ├─ event-bus/           # Kafka/PubSub plumbing for alert & agent triggers
+│  ├─ event-bus/           # SSE-based stub for alert & agent triggers
 │  ├─ scheduling/          # Reminders + caregiver notifications
 │  └─ reporting/           # Dashboards, caregiver reports, audit feeds
 ├─ apps/

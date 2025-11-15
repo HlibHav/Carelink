@@ -19,7 +19,7 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
     input.context.profile ? `Profile: ${JSON.stringify(input.context.profile)}` : null,
     input.context.facts.length ? `Facts:\n${input.context.facts.map((f) => `- ${f.text}`).join('\n')}` : null,
     input.context.goals.length
-      ? `Goals:\n${input.context.goals.map((f) => `- ${f.text} (${f.status ?? 'active'})`).join('\n')}`
+      ? `Goals:\n${input.context.goals.map((f) => `- ${f.text} (${f.importance ?? 'active'})`).join('\n')}`
       : null,
     input.context.gratitude.length
       ? `Gratitude:\n${input.context.gratitude.map((f) => `- ${f.text}`).join('\n')}`

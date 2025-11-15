@@ -20,9 +20,10 @@ It authenticates public clients, handles media uploads, and forwards requests to
    - `OPENAI_API_KEY` plus optional `OPENAI_*_MODEL` overrides for chat/emotion/planner/embeddings/Whisper
    - `PHOENIX_ENDPOINT` – placeholder for observability client
    - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` – configure the voice agent
-   - `PHYSICAL_ENGINE_URL` – base URL of `engines/physical`
-   - `MIND_BEHAVIOR_ENGINE_URL` – base URL of `engines/mind-behavior`
-   - `MEMORY_MANAGER_URL` – base URL of `services/memory-manager`
+- `PHYSICAL_ENGINE_URL` – base URL of `engines/physical`
+- `MIND_BEHAVIOR_ENGINE_URL` – base URL of `engines/mind-behavior`
+- `MEMORY_MANAGER_URL` – base URL of `services/memory-manager`
+- `DIALOGUE_AGENT_URL` – base URL of the `agents/dialogue` service
 
 Create a `.env` file if you want to run locally (trim to what you need):
 
@@ -38,6 +39,7 @@ ELEVENLABS_MODEL_ID=eleven_flash_v2
 PHYSICAL_ENGINE_URL=http://localhost:4101
 MIND_BEHAVIOR_ENGINE_URL=http://localhost:4102
 MEMORY_MANAGER_URL=http://localhost:4103
+DIALOGUE_AGENT_URL=http://localhost:4200
 ```
 
 ## API Documentation
