@@ -1,3 +1,4 @@
+import type { MemoryEntry } from '../services/memoryService.js';
 import { getOpenAIClient, openAiModels } from '../services/openAIClient.js';
 
 import { loadPrompt } from './promptLoader.js';
@@ -8,7 +9,7 @@ const plannerPrompt = loadPrompt('agent-mode-planner.md');
 interface PlannerInput {
   emotion: EmotionState;
   profile?: Record<string, unknown>;
-  openLoops?: Array<Record<string, unknown>>;
+  openLoops?: MemoryEntry[];
   lastMode?: string;
   localTime?: string;
 }
