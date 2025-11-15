@@ -8,6 +8,7 @@ import { SummaryPanel } from './components/SummaryPanel';
 import { UtteranceForm } from './components/UtteranceForm';
 import { VoiceAgentPanel } from './components/VoiceAgentPanel';
 import { EmbeddedAgentPanel } from './components/EmbeddedAgentPanel';
+import { VoiceOrbView } from './components/VoiceOrbView';
 import { fetchSummary, sendUtterance, speakWithVoiceAgent, startConversation } from './lib/api';
 import type {
   AuthConfig,
@@ -172,6 +173,11 @@ function App() {
       setIsSpeaking(false);
     }
   };
+
+  const showVoiceOrb = typeof window !== 'undefined' && window.location.pathname === '/convai';
+  if (showVoiceOrb) {
+    return <VoiceOrbView auth={auth} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sand via-white to-midnight-50 pb-16">

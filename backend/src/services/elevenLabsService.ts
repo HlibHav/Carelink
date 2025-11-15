@@ -1,4 +1,5 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
+import type { ElevenLabs } from '@elevenlabs/elevenlabs-js';
 
 import { config } from '../config.js';
 
@@ -85,9 +86,9 @@ const tonePresets: Record<
 
 const defaultTone: TonePresetName = 'warm_empathic';
 
-const formatToOutput: Record<string, string> = {
+const formatToOutput: Record<string, ElevenLabs.TextToSpeechConvertRequestOutputFormat> = {
   'audio/mpeg': 'mp3_44100_128',
-  'audio/wav': 'wav_44100',
+  'audio/wav': 'pcm_44100',
 };
 
 const ensureCredentials = () => {
@@ -153,16 +154,10 @@ export const elevenLabsService = {
         use_speaker_boost: true,
       },
       style_preset: preset.stylePreset,
-      output_format: formatToOutput[format] ?? formatToOutput['audio/mpeg'],
+      outputFormat: formatToOutput[format] ?? formatToOutput['audio/mpeg'],
     };
 
-    const stream = await getClient().textToSpeech.convert(
-      config.elevenLabs.voiceId,
-      {
-        ...payload,
-        output_format: payload.output_format,
-      },
-    );
+    const stream = await getClient().textToSpeech.convert(config.elevenLabs.voiceId, payload);
 
     const reader = stream.getReader();
     const chunks: Buffer[] = [];
