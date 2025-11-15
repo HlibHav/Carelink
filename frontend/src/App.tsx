@@ -174,7 +174,13 @@ function App() {
     }
   };
 
-  const showVoiceOrb = typeof window !== 'undefined' && window.location.pathname === '/convai';
+  const showVoiceOrb =
+    typeof window !== 'undefined' &&
+    (() => {
+      const normalized =
+        window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '') || '/';
+      return normalized === '/convai';
+    })();
   if (showVoiceOrb) {
     return <VoiceOrbView auth={auth} />;
   }
