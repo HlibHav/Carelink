@@ -265,17 +265,42 @@ curl -X POST http://localhost:8080/api/user-utterance \
   }'
 ```
 
-**Success Response**: `202 Accepted`
+**Success Response**: `200 OK`
+
+The orchestrator runs synchronously and returns the generated reply, metadata, and base64 ElevenLabs audio that the client can play immediately.
 
 ```json
 {
   "turnId": "turn_550e8400-e29b-41d4-a716-446655440000",
-  "sessionId": "sess_d9f3a7",
-  "stream": {
-    "websocket": "wss://api.lifecompanion.app/ws/conversation?sess=sess_d9f3a7",
-    "sse": "https://api.lifecompanion.app/api/turn-stream?turn=turn_550e8400-e29b-41d4-a716-446655440000"
+  "transcript": "I felt lonely last night because I couldn't sleep.",
+  "listener": {
+    "summary": "User is feeling lonely at night due to poor sleep.",
+    "facts": [{ "text": "User struggles with sleep", "type": "health" }],
+    "intents": ["needs comfort"],
+    "emotions": {
+      "primary": "sadness",
+      "intensity": "medium",
+      "energy": "low"
+    }
   },
-  "estimatedProcessingMs": 4500
+  "emotion": {
+    "primary": "sadness",
+    "intensity": "medium",
+    "energy": "low",
+    "socialNeed": "wants_connection"
+  },
+  "plan": {
+    "mode": "support",
+    "goal": "reflect_feelings",
+    "coachIntensity": "low"
+  },
+  "coach": {
+    "text": "I hear how lonely those nights can feel...",
+    "actions": []
+  },
+  "tone": "warm_empathic",
+  "audioBase64": "AAAAGGZ0eXBtcDQyAAAAAGlzb21pc28ybXA...",
+  "mimeType": "audio/mpeg"
 }
 ```
 

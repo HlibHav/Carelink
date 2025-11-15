@@ -2,3 +2,11 @@ node_modules
 dist
 .env
 .DS_Store
+
+# Google Cloud credentials
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.*.json
+carelink-*.json

@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Conversation } from '@elevenlabs/client';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useConversation } from '@elevenlabs/react';
+import { getElevenLabsAgentConfig } from '../lib/api.js';
+import type { AuthConfig } from '../lib/types.js';
 
-type ConversationRole = 'agent' | 'user' | 'system';
+type ConversationInstance = Awaited<ReturnType<typeof Conversation.startSession>>;
+
+type ConversationRole = 'user' | 'agent' | 'system';
 
 interface AgentMessage {
   id: string;
@@ -12,8 +16,8 @@ interface AgentMessage {
 }
 
 const connectionChoices = [
-  { label: 'WebRTC (low latency)', value: 'webrtc' },
-  { label: 'WebSocket', value: 'websocket' },
+  { label: 'WebRTC (low latency)', value: 'webrtc' as const },
+  { label: 'WebSocket', value: 'websocket' as const },
 ] as const;
 
 const locationChoices = [
@@ -22,6 +26,13 @@ const locationChoices = [
   { label: 'EU Residency', value: 'eu-residency' },
   { label: 'India Residency', value: 'in-residency' },
 ] as const;
+
+const locationOrigins: Record<string, string | undefined> = {
+  us: 'https://api.elevenlabs.io',
+  global: 'https://api.elevenlabs.io',
+  'eu-residency': 'https://eu.api.elevenlabs.io',
+  'in-residency': 'https://in.api.elevenlabs.io',
+};
 
 const statusStyles: Record<string, string> = {
   connected: 'bg-forest/10 text-forest',
@@ -48,7 +59,11 @@ const uuid = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-export function EmbeddedAgentPanel() {
+interface EmbeddedAgentPanelProps {
+  auth?: AuthConfig;
+}
+
+export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
   const [agentId, setAgentId] = useState(envAgentId);
   const [userId, setUserId] = useState(envUserId);
   const [connectionType, setConnectionType] = useState<(typeof connectionChoices)[number]['value']>(
@@ -68,21 +83,62 @@ export function EmbeddedAgentPanel() {
   const [volume, setVolume] = useState(Number.isFinite(envVolume) ? envVolume : 0.85);
   const [micReady, setMicReady] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(!envAutoConnect || !hasAutoConfig);
   const [widgetError, setWidgetError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState('');
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const [connectionStatus, setConnectionStatus] =
+    useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [canSendFeedback, setCanSendFeedback] = useState(false);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
 
-  const appendMessage = useCallback(
-    (entry: Omit<AgentMessage, 'id'>) => {
-      const text = entry.text?.trim();
-      if (!text) {
-        return;
-      }
-      setMessages((prev) => [...prev, { ...entry, id: uuid() }]);
-    },
-    [setMessages],
-  );
+  const conversationRef = useRef<ConversationInstance | null>(null);
+
+  // Auto-load agent configuration from backend
+  useEffect(() => {
+    if (!auth || envAgentId || envConversationToken) {
+      // Skip if auth not provided or env vars already set
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingConfig(true);
+
+    getElevenLabsAgentConfig(auth)
+      .then((config) => {
+        if (cancelled) return;
+        if (config.agentId) {
+          setAgentId(config.agentId);
+        }
+        if (config.conversationToken) {
+          setConversationToken(config.conversationToken);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('Failed to load agent configuration:', error);
+        // Don't show error to user, just fall back to manual input
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingConfig(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth]);
+
+  const appendMessage = useCallback((entry: Omit<AgentMessage, 'id'>) => {
+    const text = entry.text?.trim();
+    if (!text) {
+      return;
+    }
+    setMessages((prev) => [...prev, { ...entry, id: uuid() }]);
+  }, []);
 
   const handleIncomingEvent = useCallback(
     (event: any) => {
@@ -143,19 +199,16 @@ export function EmbeddedAgentPanel() {
     [appendMessage],
   );
 
-  const conversation = useConversation({
-    micMuted,
-    volume,
-    textOnly,
-    serverLocation,
-    onMessage: handleIncomingEvent,
-    onCanSendFeedbackChange: (allowed) => setCanSendFeedback(Boolean(allowed)),
-    onError: (error: any) =>
-      setWidgetError(typeof error === 'string' ? error : error?.message ?? 'Agent error'),
-  });
-
-  const status = conversation.status ?? 'disconnected';
-  const statusClass = statusStyles[status] ?? statusStyles.disconnected;
+  const cleanUpConversation = useCallback(async () => {
+    if (conversationRef.current) {
+      try {
+        await conversationRef.current.endSession();
+      } catch {
+        // ignore cleanup errors
+      }
+      conversationRef.current = null;
+    }
+  }, []);
 
   const handleRequestMic = useCallback(async () => {
     try {
@@ -171,20 +224,26 @@ export function EmbeddedAgentPanel() {
     const trimmedAgent = agentId.trim();
     const trimmedSignedUrl = signedUrl.trim();
     const trimmedToken = conversationToken.trim();
+    const trimmedUser = userId.trim();
+    const base = {
+      textOnly,
+      userId: trimmedUser || undefined,
+      origin: locationOrigins[serverLocation],
+    };
 
     if (trimmedSignedUrl) {
       return {
-        connectionType: 'websocket',
+        ...base,
         signedUrl: trimmedSignedUrl,
-        userId: userId.trim() || undefined,
+        connectionType: 'websocket' as const,
       };
     }
 
     if (trimmedToken) {
       return {
-        connectionType: 'webrtc',
+        ...base,
         conversationToken: trimmedToken,
-        userId: userId.trim() || undefined,
+        connectionType: 'webrtc' as const,
       };
     }
 
@@ -193,70 +252,141 @@ export function EmbeddedAgentPanel() {
     }
 
     return {
-      connectionType,
+      ...base,
       agentId: trimmedAgent,
-      userId: userId.trim() || undefined,
+      connectionType,
     };
-  }, [agentId, signedUrl, conversationToken, connectionType, userId]);
+  }, [agentId, conversationToken, connectionType, serverLocation, signedUrl, textOnly, userId]);
 
   const handleConnect = useCallback(async () => {
+    if (isConnecting) return;
     setIsConnecting(true);
     setWidgetError(null);
+    setConnectionStatus('connecting');
     try {
+      await cleanUpConversation();
+
       if (!textOnly && !micReady) {
         await handleRequestMic();
       }
+
       const sessionConfig = buildSessionConfig();
-      await conversation.startSession(sessionConfig as any);
-      appendMessage({
-        role: 'system',
-        text: 'Agent connection requested.',
+      const conversation = await Conversation.startSession({
+        ...sessionConfig,
+        onStatusChange: (next: any) => {
+          const value =
+            typeof next === 'string'
+              ? next
+              : typeof next?.status === 'string'
+                ? next.status
+                : undefined;
+          setConnectionStatus(
+            value === 'connected'
+              ? 'connected'
+              : value === 'connecting'
+                ? 'connecting'
+                : 'disconnected',
+          );
+        },
+        onModeChange: (mode: any) => {
+          const resolved =
+            typeof mode === 'string'
+              ? mode
+              : typeof mode?.mode === 'string'
+                ? mode.mode
+                : 'listening';
+          setIsSpeaking(resolved === 'speaking');
+        },
+        onCanSendFeedbackChange: (payload: any) =>
+          setCanSendFeedback(Boolean(payload?.canSendFeedback ?? payload)),
+        onError: (error: unknown) =>
+          setWidgetError(
+            typeof error === 'string'
+              ? error
+              : error && typeof (error as { message?: string }).message === 'string'
+                ? ((error as { message: string }).message ?? 'Agent error')
+                : 'Agent error',
+          ),
+        onMessage: handleIncomingEvent,
       });
+
+      conversationRef.current = conversation;
+      setConnectionStatus('connected');
+      setStatusMessage('Agent connected.');
+      appendMessage({ role: 'system', text: 'Agent connection requested.' });
     } catch (error) {
       setWidgetError(error instanceof Error ? error.message : 'Unable to start agent session.');
+      setConnectionStatus('disconnected');
     } finally {
       setIsConnecting(false);
+      setAutoConnectAttempted(true);
     }
-  }, [appendMessage, buildSessionConfig, conversation, handleRequestMic, micReady, textOnly]);
+  }, [
+    appendMessage,
+    buildSessionConfig,
+    cleanUpConversation,
+    handleIncomingEvent,
+    handleRequestMic,
+    isConnecting,
+    micReady,
+    textOnly,
+  ]);
 
-  const handleDisconnect = async () => {
-    try {
-      await conversation.endSession();
-      appendMessage({ role: 'system', text: 'Agent session closed.' });
-    } catch (error) {
-      setWidgetError(error instanceof Error ? error.message : 'Unable to end agent session.');
+  const handleDisconnect = useCallback(async () => {
+    await cleanUpConversation();
+    setConnectionStatus('disconnected');
+    setIsSpeaking(false);
+    setCanSendFeedback(false);
+    appendMessage({ role: 'system', text: 'Agent session closed.' });
+  }, [appendMessage, cleanUpConversation]);
+
+  const handleSendText = () => {
+    const trimmed = messageInput.trim();
+    if (!trimmed) {
+      return;
     }
+    const conv = conversationRef.current;
+    if (!conv) {
+      setWidgetError('Connect to the agent before sending a message.');
+      return;
+    }
+    conv.sendUserActivity();
+    conv.sendUserMessage(trimmed);
+    appendMessage({ role: 'user', text: trimmed });
+    setMessageInput('');
   };
 
   useEffect(() => {
-    if (!envAutoConnect || autoConnectAttempted || status !== 'disconnected' || isConnecting) {
-      return;
-    }
-    if (!hasAutoConfig) {
-      setAutoConnectAttempted(true);
-      return;
-    }
+    const timer = statusMessage ? setTimeout(() => setStatusMessage(null), 4000) : undefined;
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [statusMessage]);
 
-    (async () => {
-      setAutoConnectAttempted(true);
-      try {
-        await handleConnect();
-      } catch (error) {
-        setWidgetError(
-          error instanceof Error ? error.message : 'Auto connection failed. Use the controls above.',
-        );
-      }
-    })();
-  }, [autoConnectAttempted, handleConnect, isConnecting, status]);
+  useEffect(() => {
+    return () => {
+      cleanUpConversation();
+    };
+  }, [cleanUpConversation]);
 
-  const handleSendText = () => {
-    if (!messageInput.trim()) {
+  useEffect(() => {
+    if (conversationRef.current) {
+      conversationRef.current.setMicMuted(micMuted);
+    }
+  }, [micMuted]);
+
+  useEffect(() => {
+    if (conversationRef.current) {
+      conversationRef.current.setVolume({ volume });
+    }
+  }, [volume]);
+
+  useEffect(() => {
+    if (!envAutoConnect || autoConnectAttempted || !hasAutoConfig) {
       return;
     }
-    conversation.sendUserMessage(messageInput.trim());
-    appendMessage({ role: 'user', text: messageInput.trim() });
-    setMessageInput('');
-  };
+    handleConnect();
+  }, [autoConnectAttempted, envAutoConnect, handleConnect, hasAutoConfig]);
 
   const messageHeader = useMemo(() => {
     if (!messages.length) {
@@ -272,10 +402,29 @@ export function EmbeddedAgentPanel() {
           <p className="text-xs uppercase tracking-wide text-midnight-400">Hosted Agent</p>
           <h2 className="text-lg font-semibold text-midnight-900">ElevenLabs Agents Widget</h2>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}>
-          {status === 'connected' ? 'Connected' : status === 'connecting' ? 'Connecting…' : 'Idle'}
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusStyles[connectionStatus]}`}>
+          {connectionStatus === 'connected'
+            ? 'Connected'
+            : connectionStatus === 'connecting'
+              ? 'Connecting…'
+              : 'Idle'}
         </span>
       </div>
+
+      {(widgetError || statusMessage) && (
+        <div className="mt-4 space-y-2">
+          {widgetError ? (
+            <p className="rounded-3xl border border-blush/40 bg-blush/10 px-3 py-2 text-sm text-blush">
+              {widgetError}
+            </p>
+          ) : null}
+          {statusMessage ? (
+            <p className="rounded-3xl border border-forest/30 bg-forest/10 px-3 py-2 text-sm text-forest">
+              {statusMessage}
+            </p>
+          ) : null}
+        </div>
+      )}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <label className="text-sm font-medium text-midnight-700">
@@ -406,7 +555,7 @@ export function EmbeddedAgentPanel() {
         <button
           type="button"
           onClick={handleConnect}
-          disabled={isConnecting || status === 'connected'}
+          disabled={isConnecting || connectionStatus === 'connected'}
           className="rounded-2xl bg-midnight-900 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-midnight-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {isConnecting ? 'Connecting…' : 'Connect'}
@@ -414,18 +563,12 @@ export function EmbeddedAgentPanel() {
         <button
           type="button"
           onClick={handleDisconnect}
-          disabled={status !== 'connected'}
+          disabled={connectionStatus !== 'connected'}
           className="rounded-2xl border border-midnight-200 px-4 py-2 text-sm font-semibold text-midnight-800 transition hover:border-midnight-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Disconnect
         </button>
       </div>
-
-      {widgetError ? (
-        <p className="mt-3 rounded-2xl border border-blush/40 bg-blush/10 px-3 py-2 text-sm text-blush">
-          {widgetError}
-        </p>
-      ) : null}
 
       <div className="mt-6 rounded-3xl border border-midnight-100 bg-midnight-50/70 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-midnight-500">
@@ -451,14 +594,14 @@ export function EmbeddedAgentPanel() {
           <div className="mt-4 flex gap-3 text-sm">
             <button
               type="button"
-              onClick={() => conversation.sendFeedback(true)}
+              onClick={() => conversationRef.current?.sendFeedback(true)}
               className="flex-1 rounded-2xl border border-forest/30 px-3 py-2 font-semibold text-forest hover:bg-forest/10"
             >
               👍 Good
             </button>
             <button
               type="button"
-              onClick={() => conversation.sendFeedback(false)}
+              onClick={() => conversationRef.current?.sendFeedback(false)}
               className="flex-1 rounded-2xl border border-blush/40 px-3 py-2 font-semibold text-blush hover:bg-blush/10"
             >
               👎 Needs work
@@ -470,7 +613,9 @@ export function EmbeddedAgentPanel() {
       <div className="mt-6 rounded-3xl bg-white/90 p-4 shadow-inner ring-1 ring-midnight-100">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-midnight-800">{messageHeader}</h3>
-          <span className="text-xs text-midnight-500">{conversation.isSpeaking ? 'Agent speaking' : 'Agent listening'}</span>
+          <span className="text-xs text-midnight-500">
+            {isSpeaking ? 'Agent speaking' : 'Agent listening'}
+          </span>
         </div>
         <div className="mt-3 max-h-64 space-y-3 overflow-y-auto pr-2">
           {messages.length === 0 ? (
@@ -502,4 +647,3 @@ export function EmbeddedAgentPanel() {
     </div>
   );
 }
-  const [autoConnectAttempted, setAutoConnectAttempted] = useState(!envAutoConnect || !hasAutoConfig);
