@@ -13,6 +13,8 @@ export const config = {
     process.env.PHYSICAL_ENGINE_URL?.replace(/\/$/, '') ?? 'http://localhost:4101',
   mindBehaviorEngineUrl:
     process.env.MIND_BEHAVIOR_ENGINE_URL?.replace(/\/$/, '') ?? 'http://localhost:4102',
+  schedulingServiceUrl:
+    process.env.SCHEDULING_SERVICE_URL?.replace(/\/$/, '') ?? 'http://localhost:4205',
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',
     baseUrl: process.env.OPENAI_BASE_URL ?? undefined,
