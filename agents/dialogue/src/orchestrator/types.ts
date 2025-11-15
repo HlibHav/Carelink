@@ -30,3 +30,9 @@ export interface ConversationContext {
   physicalState?: PhysicalStateSummary;
   mindBehaviorState?: MindBehaviorState;
 }
+
+export interface SafetyCommandContext {
+  prompt: string;
+  reason?: string;
+  escalation?: string;
+}

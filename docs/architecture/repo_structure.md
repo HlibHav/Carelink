@@ -133,3 +133,41 @@ All asynchronous flows use a shared Event Bus (Kafka/Pub/Sub). Events are versio
 | Memory Manager | `POST /memory/:userId/turns` | Persist conversation turn |
 
 The `apps/gateway` service is now a thin authenticated façade that forwards user interactions to these services and publishes/consumes the event contracts listed above.
+`coach.plan.ready.v1`
+```json
+{
+  "event_id": "evt_cp_91",
+  "user_id": "user_42",
+  "turn_id": "turn_abc",
+  "summary": "Short description of the plan",
+  "focus_domains": ["physical", "mind"],
+  "actions": [
+    { "title": "2 minute breathing", "when": "after breakfast" }
+  ],
+  "conversation_starters": [
+    "When you have a moment, let's check in on your walk plan."
+  ]
+}
+```
+
+`safety.command.v1`
+```json
+{
+  "event_id": "evt_sc_10",
+  "user_id": "user_42",
+  "turn_id": "turn_abc",
+  "prompt": "Ask the user if they are okay after the fall alert.",
+  "reason": "fall_detection",
+  "escalation": "caregiver|emergency"
+}
+```
+
+`safety.command.handled.v1`
+```json
+{
+  "event_id": "evt_sch_11",
+  "user_id": "user_42",
+  "turn_id": "turn_abc",
+  "handled_at": "2024-03-12T15:04:00Z"
+}
+```

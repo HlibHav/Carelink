@@ -38,8 +38,9 @@ Core pillars:
   - `physical/` – deterministic vitals analytics stub + alert stream.
   - `mind-behavior/` – unified emotional/cognitive/social/routine analytics stub.
 - `services/`
-  - `memory-manager/` – HTTP API matching CareLink’s memory contracts.
+  - `memory-manager/` – HTTP API matching CareLink's memory contracts.
   - `event-bus/` – SSE relay for publishing/consuming the architecture contracts.
+  - `scheduling/` – deterministic scheduling and notification stub.
 - `apps/`
   - `gateway/` – public HTTP API (dialogue gateway).
   - `frontend/` – developer-facing UI (still under `frontend/` directory).
