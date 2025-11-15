@@ -1,14 +1,21 @@
 import { publishEvent } from '../clients/eventBusClient.js';
 import { storeCoachRecommendation } from '../clients/memoryManagerClient.js';
 import { scheduleTask, sendNotification } from '../clients/schedulingClient.js';
+import { coachLog } from '../telemetry/logger.js';
 
 import { buildCoachContext } from './contextBuilder.js';
 import { generateCoachPlan } from './planGenerator.js';
 import type { CoachTriggerEvent } from './types.js';
 
 export async function handleCoachTrigger(event: CoachTriggerEvent): Promise<void> {
+  coachLog({
+    event: 'trigger_received',
+    userId: event.userId,
+    metadata: event as unknown as Record<string, unknown>,
+  });
   const context = await buildCoachContext(event.userId);
   const plan = await generateCoachPlan(context, event);
+  coachLog({ event: 'plan_generated', userId: event.userId, metadata: { summary: plan.summary } });
 
   const schedulingPromises = plan.actions
     .filter((action) => action.when)
@@ -22,7 +29,11 @@ export async function handleCoachTrigger(event: CoachTriggerEvent): Promise<void
           category: action.category ?? null,
         },
       }).catch((error) => {
-        console.warn('[CoachAgent] Failed to schedule action', action, error);
+        coachLog({
+          event: 'schedule_failed',
+          userId: event.userId,
+          metadata: { error: String(error), action },
+        });
       }),
     );
 
@@ -33,7 +44,7 @@ export async function handleCoachTrigger(event: CoachTriggerEvent): Promise<void
           message: plan.conversationStarters[0],
           channel: 'app',
         }).catch((error) => {
-          console.warn('[CoachAgent] Failed to send notification', error);
+          coachLog({ event: 'notification_failed', userId: event.userId, metadata: { error: String(error) } });
         })
       : Promise.resolve();
 
@@ -50,4 +61,5 @@ export async function handleCoachTrigger(event: CoachTriggerEvent): Promise<void
     ...schedulingPromises,
     notificationPromise,
   ]);
+  coachLog({ event: 'plan_completed', userId: event.userId });
 }

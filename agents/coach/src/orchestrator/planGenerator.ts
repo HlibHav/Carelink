@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -10,7 +11,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const promptPath = join(__dirname, '../../../prompts/coach-plan-generator.md');
-const systemPrompt = readFileSync(promptPath, 'utf-8');
+const defaultPrompt = `You are the CareLink Coach agent. Provide concise JSON plans.`;
+const systemPrompt = existsSync(promptPath) ? readFileSync(promptPath, 'utf-8') : defaultPrompt;
 
 export async function generateCoachPlan(
   context: CoachContext,
