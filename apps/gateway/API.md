@@ -7,6 +7,11 @@ Complete API documentation with curl examples and request/response samples.
 - **Local Development**: `http://localhost:8080`
 - **Production**: `https://api.lifecompanion.app` (TBD)
 
+## Service Dependencies
+
+The gateway delegates conversational reasoning to the standalone **Dialogue Agent** (`agents/dialogue`).  
+Set `DIALOGUE_AGENT_URL` (defaults to `http://localhost:4200`) and keep that service running; otherwise routes such as `/api/user-utterance` and `/api/elevenlabs/dialogue-turn` will respond with `503 SERVICE_UNAVAILABLE`.
+
 ## Authentication
 
 All `/api/*` endpoints require the following headers:

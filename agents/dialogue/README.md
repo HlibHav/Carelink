@@ -20,3 +20,21 @@ cd agents/dialogue
 npm install
 npm run dev
 ```
+
+For production builds:
+
+```bash
+cd agents/dialogue
+cp .env.example .env
+npm install
+npm run build
+npm run start:prod
+```
+
+### Docker
+
+```bash
+cd agents/dialogue
+docker build -t dialogue-agent .
+docker run --env-file .env -p 4200:4200 dialogue-agent
+```

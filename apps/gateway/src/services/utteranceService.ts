@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
+import { sessionStore } from '../stores/sessionStore.js';
+
 import { runDialogueAgentTurn } from './dialogueAgentClient.js';
 import { elevenLabsService } from './elevenLabsService.js';
 import type { TonePresetName } from './elevenLabsService.js';
 import { transcribeAudio } from './sttService.js';
-import { sessionStore } from '../stores/sessionStore.js';
 
 interface AcceptUtteranceInput {
   sessionId: string;

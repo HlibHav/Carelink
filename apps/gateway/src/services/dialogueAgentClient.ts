@@ -1,35 +1,63 @@
+import type { DialogueAgentRequest, DialogueAgentResponse } from '@carelink/conversation-types';
+
 import { config } from '../config.js';
+import { errors } from '../shared/httpErrors.js';
 
-export interface DialogueAgentRequest {
-  userId: string;
-  sessionId: string;
-  transcript: string;
-  metadata?: Record<string, unknown>;
-}
+export type { DialogueAgentRequest, DialogueAgentResponse };
 
-export interface DialogueAgentResponse {
-  turnId: string;
-  transcript: string;
-  listener: Record<string, unknown>;
-  emotion: Record<string, unknown>;
-  plan: Record<string, unknown>;
-  coach: { text: string; actions?: Array<{ type: string; text: string }>; reasoning?: string };
-  tone: string;
-}
+const FAILURE_THRESHOLD = 3;
+const CIRCUIT_OPEN_MS = 30_000;
+
+let consecutiveFailures = 0;
+let circuitOpenedAt: number | null = null;
+
+const resetCircuit = () => {
+  consecutiveFailures = 0;
+  circuitOpenedAt = null;
+};
+
+const recordFailure = () => {
+  consecutiveFailures += 1;
+  if (consecutiveFailures >= FAILURE_THRESHOLD) {
+    circuitOpenedAt = Date.now();
+  }
+};
+
+const ensureCircuitClosed = () => {
+  if (circuitOpenedAt === null) {
+    return;
+  }
+  if (Date.now() - circuitOpenedAt > CIRCUIT_OPEN_MS) {
+    resetCircuit();
+    return;
+  }
+  throw errors.serviceUnavailable('Dialogue agent temporarily unavailable. Please try again later.');
+};
 
 export async function runDialogueAgentTurn(payload: DialogueAgentRequest): Promise<DialogueAgentResponse> {
-  const response = await fetch(`${config.services.dialogueAgentUrl}/turn`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  ensureCircuitClosed();
+
+  let response: Response;
+  try {
+    response = await fetch(`${config.services.dialogueAgentUrl}/turn`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (networkError) {
+    recordFailure();
+    throw errors.serviceUnavailable('Dialogue agent unreachable.');
+  }
 
   if (!response.ok) {
+    recordFailure();
     const text = await response.text().catch(() => 'Dialogue agent error');
-    throw new Error(text);
+    throw errors.serviceUnavailable(text);
   }
+
+  resetCircuit();
 
   return response.json() as Promise<DialogueAgentResponse>;
 }

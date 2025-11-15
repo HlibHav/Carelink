@@ -44,11 +44,75 @@ The dev server defaults to `http://localhost:5173` and proxies requests directly
 5. **Hosted Agent** – Scroll down to the “ElevenLabs Agents Widget” card. The frontend now fetches the agent config from the backend, requests mic access, and connects automatically once a token comes back. Set `VITE_ELEVENLABS_AUTO_CONNECT=false` if you want to opt out, or `true` to force auto-connect even when you supply IDs via env vars. Otherwise you can paste the IDs manually and hit **Connect**. The panel streams transcripts, metadata, and lets you send manual turns/feedback through the official `@elevenlabs/react` SDK.
 6. **Orb View** – Visit `http://localhost:5173/convai` to open a distraction-free screen with a single animated orb that reflects the agent’s state (connecting, listening, speaking). The orb auto-connects using the same ElevenLabs configuration/environment variables as the main widget, so you can test an immersive kiosk-like experience.
 
+## ElevenLabs Hosted Agent
+
+The frontend integrates with ElevenLabs hosted agents through a **client tool** that delegates dialogue orchestration to CareLink. When the ElevenLabs agent needs to process a user turn, it invokes the `carelink_dialogue_orchestrator` client tool, which forwards the transcript to CareLink's `/api/elevenlabs/dialogue-turn` endpoint and returns the orchestrated response.
+
+### Client Tool Setup
+
+Before using the hosted agent, you must register the client tool with your ElevenLabs agent:
+
+```bash
+# From the project root
+node scripts/ensure-elevenlabs-client-tool.mjs
+```
+
+This script requires:
+- `ELEVENLABS_API_KEY` – Your ElevenLabs API key
+- `ELEVENLABS_AGENT_ID` – The ID of the agent to configure
+
+The script registers the `carelink_dialogue_orchestrator` tool with your agent, enabling it to call CareLink's dialogue orchestrator when processing user turns.
+
+### Client Tool Implementation
+
+The client tool is implemented in `src/lib/elevenLabsTools.ts` and provides:
+
+- **Automatic transcript extraction** from various parameter formats
+- **Session and user ID resolution** from tool parameters or defaults
+- **Error handling** with detailed logging
+- **Telemetry** for monitoring tool invocations and backend responses
+
+When invoked, the tool:
+1. Extracts the user transcript from the tool parameters
+2. Resolves session and user IDs (with fallbacks)
+3. Sends a POST request to `/api/elevenlabs/dialogue-turn`
+4. Returns the orchestrated response text to the ElevenLabs agent
+
+### Observability
+
+The client tool logs all invocations and responses to the browser console:
+
+- `[ElevenLabs Client Tool] Tool call initiated` – When the tool is invoked
+- `[ElevenLabs Client Tool] Backend response received` – On successful response
+- `[ElevenLabs Client Tool] Backend request failed` – On errors
+- `[API] Sending dialogue turn request` – API-level logging
+- `[API] Dialogue turn response received` – API-level success logging
+
+Each log entry includes:
+- Tool call ID for tracing
+- Timestamps
+- Request/response metadata (turn ID, duration, emotion, mode)
+- Error details (if applicable)
+
+### Required Environment Variables
+
+For the client tool to work, ensure these are set:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `VITE_API_URL` | Backend API base URL (must include `/api`) | Yes |
+| `VITE_ELEVENLABS_AGENT_ID` | ElevenLabs agent ID (or fetch from backend) | Recommended |
+| `VITE_ELEVENLABS_USER_ID` | Default user ID for tool calls | Optional |
+
+The frontend also requires valid auth configuration (token, user ID, device ID) to authenticate requests to the backend.
+
 ## Scripts
 
 - `npm run dev` – Start Vite in development mode.
 - `npm run build` – Type-check and produce a production build.
 - `npm run preview` – Preview the built assets.
+- `npm test` – Run Playwright integration tests.
+- `npm run test:ui` – Run Playwright tests with UI mode.
 
 ## Tech Stack
 

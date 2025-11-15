@@ -12,7 +12,11 @@ import path from 'node:path';
 const TOOL_NAME = 'carelink_dialogue_orchestrator';
 
 const readEnvFile = () => {
-  const envPath = path.resolve(process.cwd(), '.env');
+  // Try .env/.env first (project structure), then .env in root
+  const envPath1 = path.resolve(process.cwd(), '.env/.env');
+  const envPath2 = path.resolve(process.cwd(), '.env');
+  const envPath = fs.existsSync(envPath1) ? envPath1 : envPath2;
+  
   if (!fs.existsSync(envPath)) {
     return {};
   }
@@ -42,7 +46,8 @@ const env = {
 };
 
 const apiKey = env.ELEVENLABS_API_KEY;
-const agentId = env.ELEVENLABS_AGENT_ID;
+// Check both ELEVENLABS_AGENT_ID and VITE_ELEVENLABS_AGENT_ID (for frontend compatibility)
+const agentId = env.ELEVENLABS_AGENT_ID || env.VITE_ELEVENLABS_AGENT_ID;
 const baseUrl =
   (env.ELEVENLABS_BASE_URL?.replace(/\/$/, '') || 'https://api.elevenlabs.io/v1').replace(
     /\/?v1$/,
@@ -50,7 +55,7 @@ const baseUrl =
   );
 
 if (!apiKey || !agentId) {
-  console.error('❌ ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID must be set in the environment or .env');
+  console.error('❌ ELEVENLABS_API_KEY and ELEVENLABS_AGENT_ID (or VITE_ELEVENLABS_AGENT_ID) must be set in the environment or .env');
   process.exit(1);
 }
 
@@ -91,7 +96,10 @@ const payload = {
 
 const run = async () => {
   const targetUrl = `${baseUrl}/convai/agents/${agentId}`;
-  console.log(`➡️  Updating ElevenLabs agent ${agentId.slice(0, 8)}...`);
+  console.log(`➡️  Updating ElevenLabs agent ${agentId}...`);
+  console.log(`   URL: ${targetUrl}`);
+  console.log(`   Payload: ${JSON.stringify(payload, null, 2)}`);
+  
   const response = await fetch(targetUrl, {
     method: 'PATCH',
     headers: {
@@ -104,6 +112,8 @@ const run = async () => {
   if (!response.ok) {
     const errorText = await response.text().catch(() => 'Unknown error');
     console.error(`❌ Failed to update agent (${response.status}): ${errorText}`);
+    console.error(`   This might be a temporary ElevenLabs API issue.`);
+    console.error(`   Check: https://status.elevenlabs.io for API status`);
     process.exit(1);
   }
 
