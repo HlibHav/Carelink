@@ -1,5 +1,7 @@
 # Memory Manager Integration Check
 
+> **Note (2025-11):** Firestore has been removed. All metadata now lives in Weaviate. References below to Firestore describe the legacy setup and have been replaced by the new `UserProfile`, `ConversationMeta`, and `Turn` classes.
+
 ## ✅ Weaviate Integration
 
 ### 1. Client Initialization
@@ -9,7 +11,7 @@
 
 ### 2. Memory Storage
 - ✅ `POST /memory/:userId/store-candidate` stores memories in both:
-  - **Firestore**: Metadata (text, importance, metadata, createdAt, weaviateId)
+- **Weaviate (structured classes)**: UserProfile, ConversationMeta, Turn metadata
   - **Weaviate**: Vector embeddings (automatic via text2vec-openai)
 - ✅ Category-specific fields extracted from metadata:
   - `facts`: `metadata.type` → `factType` in Weaviate
@@ -18,14 +20,14 @@
 ### 3. Memory Retrieval
 - ✅ `POST /memory/:userId/retrieve-for-dialogue` uses Weaviate for semantic search:
   - When `query` is provided → uses `searchMemories()` from Weaviate
-  - When `query` is empty → falls back to Firestore `fetchRecentEntries()`
+- When `query` is empty → falls back to recent entries from Weaviate `Memory`
 - ✅ Filters by `userId` and `category` automatically
 - ✅ Returns top-k results ranked by semantic similarity
 
 ## ✅ ACE Playbook Integration
 
 ### 1. Playbook Loading
-- ✅ `loadPlaybook(userId)` loads from Firestore: `users/{userId}/playbooks/default`
+- ✅ `loadPlaybook(userId)` loads from Weaviate `UserProfile.playbook`
 - ✅ Returns `null` if no playbook exists (falls back to default behavior)
 - ✅ Handles errors gracefully (logs and returns null)
 
@@ -44,8 +46,8 @@
 
 ### 4. Integration Flow
 ```
-1. Load memories (Weaviate semantic search OR Firestore recent)
-2. Load playbook from Firestore
+1. Load memories (Weaviate semantic search OR recent entries)
+2. Load playbook from Weaviate `UserProfile`
 3. Apply retrieval strategies (filter by emotion/mode)
 4. Apply context engineering rules (filter by query)
 5. Return filtered results with playbook version
@@ -63,7 +65,7 @@ node scripts/test-memory-weaviate-ace.mjs [userId]
 - [ ] Store memories in Weaviate
 - [ ] Semantic search via Weaviate
 - [ ] ACE playbook loading
-- [ ] Fallback to Firestore (no query)
+- [ ] Fallback to recent entries (no query)
 
 ### Manual Verification
 
@@ -114,10 +116,9 @@ node scripts/test-memory-weaviate-ace.mjs [userId]
 ### Logs to Watch
 - `[ACE] Applied playbook v...` - Confirms ACE is working
 - Weaviate connection errors
-- Firestore connection errors
+- Weaviate connection errors
 
 ### Metrics to Track
 - Memory retrieval latency
 - Playbook application rate
 - Weaviate search performance
-

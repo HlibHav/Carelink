@@ -29,7 +29,7 @@ export function setupScheduler(): void {
     console.log(`[${new Date().toISOString()}] Starting nightly jobs...`);
 
     try {
-      // TODO: Get list of active users from Firestore
+      // TODO: Get list of active users from the user service / Weaviate
       // For now, this is a placeholder that would need to be called per-user
       // In production, this would iterate over all active users
 
@@ -65,4 +65,3 @@ export async function runNightlyJobsForUser(userId: string): Promise<void> {
     throw error;
   }
 }
-

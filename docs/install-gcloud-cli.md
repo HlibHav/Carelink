@@ -62,7 +62,5 @@ gcloud auth activate-service-account carelink@carelink-478309.iam.gserviceaccoun
 ## After Installation
 
 Once gcloud is installed, you can use it for:
-- Managing Firestore (if needed)
 - Google Cloud operations
 - Service account management
-

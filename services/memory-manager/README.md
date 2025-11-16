@@ -31,35 +31,20 @@ These endpoints handle batch processing and can tolerate higher latency:
 
 ## Storage
 
-The service uses a **hybrid approach**:
+All conversational data now lives in **Weaviate**:
 
-### Weaviate (Vector Database)
-- Stores vector embeddings for semantic search
-- Collection: `Memory`
-- Properties: userId, category, text, importance, factType, goalStatus, metadata, timestamps
-- Automatic embedding generation via `text2vec-openai`
-
-### Firestore (Metadata Storage)
-- `users/{userId}` - Root user document
-- `users/{userId}/profile` - User profile data
-- `users/{userId}/facts` - Life facts metadata (references Weaviate via `weaviateId`)
-- `users/{userId}/goals` - User goals metadata (references Weaviate via `weaviateId`)
-- `users/{userId}/gratitude` - Gratitude entries metadata (references Weaviate via `weaviateId`)
-- `users/{userId}/conversations/{sessionId}` - Conversation sessions
-- `users/{userId}/conversations/{sessionId}/turns/{turnId}` - Conversation turns
-- `users/{userId}/playbooks/{playbookId}` - ACE playbooks
+- `Memory` – Semantic facts/goals/gratitude (vectorized via `text2vec-openai`).
+- `UserProfile` – Serialized profile, safety settings, playbook JSON (vectorizer disabled).
+- `ConversationMeta` – Session metadata (mode, emotion snapshots, timestamps).
+- `Turn` – Every dialogue turn for analytics/digests.
 
 ## Configuration
 
 Environment variables:
 
 - `PORT` - Server port (default: 4103)
-- `GOOGLE_PROJECT_ID` - Google Cloud project ID (for Firestore)
-- `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON (for Firestore)
-- `FIRESTORE_EMULATOR_HOST` - Firestore emulator host (for local development)
-- `WEAVIATE_HOST` - Weaviate host (default: localhost)
-- `WEAVIATE_PORT` - Weaviate port (default: 8082)
-- `WEAVIATE_SCHEME` - Weaviate scheme (http or https, default: http)
+- `WEAVIATE_URL` - Optional full cloud endpoint (preferred)
+- `WEAVIATE_HOST`, `WEAVIATE_PORT`, `WEAVIATE_SCHEME` - Local fallback when not using `WEAVIATE_URL`
 - `OPENAI_API_KEY` - OpenAI API key (required for text2vec-openai vectorizer)
 
 ## Development
@@ -69,4 +54,3 @@ npm run dev    # Start development server
 npm run build  # Build TypeScript
 npm start      # Run production build
 ```
-

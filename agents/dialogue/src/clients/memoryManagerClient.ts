@@ -62,7 +62,10 @@ export function saveConversationTurn(
   });
 }
 
-export function storeFacts(userId: string, items: Array<{ text: string; importance?: 'low' | 'medium' | 'high' }>) {
+export function storeFacts(
+  userId: string,
+  items: Array<{ text: string; importance?: 'low' | 'medium' | 'high'; metadata?: Record<string, unknown> }>,
+) {
   if (!items.length) {
     return Promise.resolve();
   }
@@ -73,6 +76,7 @@ export function storeFacts(userId: string, items: Array<{ text: string; importan
         category: 'facts',
         text: item.text,
         importance: item.importance ?? 'low',
+        ...(item.metadata ? { metadata: item.metadata } : {}),
       })),
     }),
   });

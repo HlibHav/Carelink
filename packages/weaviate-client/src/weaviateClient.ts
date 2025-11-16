@@ -18,26 +18,7 @@ function parseMetadata(raw: unknown): Record<string, unknown> {
   }
 }
 
-export function getWeaviateClient(config?: WeaviateConfig): WeaviateClient {
-  const host = config?.host || process.env.WEAVIATE_HOST || 'localhost';
-  const port = config?.port || parseInt(process.env.WEAVIATE_PORT || '8080', 10);
-  const scheme = config?.scheme || (process.env.WEAVIATE_SCHEME === 'https' ? 'https' : 'http');
-  
-  const clientConfig: {
-    host: string;
-    scheme: 'http' | 'https';
-    apiKey?: ApiKey;
-    headers?: Record<string, string>;
-  } = {
-    host: `${host}:${port}`,
-    scheme,
-  };
-
-  if (config?.apiKey) {
-    clientConfig.apiKey = new ApiKey(config.apiKey);
-  }
-
-  // Add OpenAI API key for text2vec-openai vectorizer
+export async function getWeaviateClient(config?: WeaviateConfig): Promise<WeaviateClient> {
   const headers: Record<string, string> = {};
   if (config?.headers) {
     Object.assign(headers, config.headers);
@@ -45,6 +26,35 @@ export function getWeaviateClient(config?: WeaviateConfig): WeaviateClient {
   if (process.env.OPENAI_API_KEY && !headers['X-OpenAI-Api-Key']) {
     headers['X-OpenAI-Api-Key'] = process.env.OPENAI_API_KEY;
   }
+
+  const apiKeyValue = config?.apiKey || process.env.WEAVIATE_API_KEY;
+  const cloudUrl = config?.url || process.env.WEAVIATE_URL;
+  const clientConfig: {
+    host: string;
+    scheme: 'http' | 'https';
+    apiKey?: ApiKey;
+    headers?: Record<string, string>;
+  } = (() => {
+    if (cloudUrl) {
+      // Allow WEAVIATE_URL without scheme (e.g. "xyz.weaviate.cloud") by defaulting to https
+      const normalizedUrl =
+        /^https?:\/\//i.test(cloudUrl) ? cloudUrl : `https://${cloudUrl}`;
+      const parsed = new URL(normalizedUrl);
+      const host = parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+      const scheme = parsed.protocol === 'https:' ? 'https' : 'http';
+      return { host, scheme };
+    }
+
+    const host = config?.host || process.env.WEAVIATE_HOST || 'localhost';
+    const port = config?.port || parseInt(process.env.WEAVIATE_PORT || '8080', 10);
+    const scheme = config?.scheme || (process.env.WEAVIATE_SCHEME === 'https' ? 'https' : 'http');
+    return { host: `${host}:${port}`, scheme };
+  })();
+
+  if (apiKeyValue) {
+    clientConfig.apiKey = new ApiKey(apiKeyValue);
+  }
+
   if (Object.keys(headers).length > 0) {
     clientConfig.headers = headers;
   }

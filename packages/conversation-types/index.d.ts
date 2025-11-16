@@ -79,4 +79,9 @@ export interface DialogueAgentResponse {
   plan: ModePlan;
   coach: CoachResponse;
   tone: string;
+  safetyCommand?: {
+    prompt: string;
+    reason?: string;
+    escalation?: string;
+  };
 }

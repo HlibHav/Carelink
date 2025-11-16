@@ -4,14 +4,17 @@ import { publishEvent } from '../clients/eventBusClient.js';
 import { getMindBehaviorState } from '../clients/mindBehaviorEngineClient.js';
 import { getPhysicalStateSummary } from '../clients/physicalEngineClient.js';
 import { retrieveDialogueContext, saveConversationTurn, storeFacts } from '../clients/memoryManagerClient.js';
+import type { MemoryEntry } from '../clients/memoryManagerClient.js';
 import { dequeueSafetyCommand } from '../queue/safetyCommandQueue.js';
 
 import { generateCoachReply } from './coachAgent.js';
-import { buildResponseGuidance } from './guidanceBuilder.js';
+import { buildResponseGuidance, extractPreferredName } from './guidanceBuilder.js';
 import { refineEmotionState } from './emotionAgent.js';
 import { runListenerAgent } from './listenerAgent.js';
 import { planNextTurn } from './plannerAgent.js';
 import { determineTone } from './toneAgent.js';
+const derivedFactCache = new Map<string, Set<string>>();
+
 import type {
   ConversationContext,
   DialogueAgentInput,
@@ -20,6 +23,107 @@ import type {
   ModePlan,
   ResponseGuidance,
 } from './types.js';
+
+function hasDerivedFact(userId: string, key: string, facts: MemoryEntry[]): boolean {
+  if (facts.some((fact) => fact.metadata?.derivedKey === key)) {
+    return true;
+  }
+  return derivedFactCache.get(userId)?.has(key) ?? false;
+}
+
+function registerDerivedFact(userId: string, key: string): void {
+  if (!derivedFactCache.has(userId)) {
+    derivedFactCache.set(userId, new Set());
+  }
+  derivedFactCache.get(userId)!.add(key);
+}
+
+async function ensureDerivedFacts(userId: string, context: ConversationContext): Promise<void> {
+  const additions: Array<{
+    key: string;
+    text: string;
+    importance: 'low' | 'medium' | 'high';
+    metadata: Record<string, unknown>;
+  }> = [];
+
+  const preferredName = extractPreferredName(context.profile);
+  if (preferredName) {
+    const key = `profile:name:${preferredName.toLowerCase()}`;
+    if (!hasDerivedFact(userId, key, context.facts)) {
+      additions.push({
+        key,
+        text: `Мене звати ${preferredName}.`,
+        importance: 'medium',
+        metadata: { derivedKey: key, value: preferredName },
+      });
+    }
+  }
+
+  if (context.physicalState?.summary) {
+    const dayKey = context.physicalState.generatedAt?.slice(0, 10) ?? 'latest';
+    const key = `physical:summary:${dayKey}`;
+    if (!hasDerivedFact(userId, key, context.facts)) {
+      additions.push({
+        key,
+        text: `Самопочуття: ${context.physicalState.summary}`,
+        importance: 'low',
+        metadata: {
+          derivedKey: key,
+          generatedAt: context.physicalState.generatedAt,
+        },
+      });
+    }
+  }
+
+  const notableVital =
+    context.physicalState?.vitals.find((vital) => vital.risk === 'high') ??
+    context.physicalState?.vitals.find((vital) => vital.risk === 'medium');
+  if (notableVital) {
+    const dayKey = context.physicalState?.generatedAt?.slice(0, 10) ?? 'latest';
+    const key = `physical:vital:${notableVital.metric}:${dayKey}`;
+    if (!hasDerivedFact(userId, key, context.facts)) {
+      additions.push({
+        key,
+        text: `${notableVital.label}: ${notableVital.value}${notableVital.unit} (${notableVital.risk} ризик).`,
+        importance: 'low',
+        metadata: {
+          derivedKey: key,
+          metric: notableVital.metric,
+          value: notableVital.value,
+          unit: notableVital.unit,
+          risk: notableVital.risk,
+          generatedAt: context.physicalState?.generatedAt,
+        },
+      });
+    }
+  }
+
+  if (!additions.length) {
+    return;
+  }
+
+  await storeFacts(
+    userId,
+    additions.map((addition) => ({
+      text: addition.text,
+      importance: addition.importance,
+      metadata: addition.metadata,
+    })),
+  );
+
+  const createdAt = new Date().toISOString();
+  additions.forEach((addition) => {
+    registerDerivedFact(userId, addition.key);
+    context.facts.unshift({
+      id: `derived-${addition.key}-${randomUUID()}`,
+      text: addition.text,
+      category: 'facts',
+      importance: addition.importance,
+      createdAt,
+      metadata: addition.metadata,
+    });
+  });
+}
 
 async function buildConversationContext(userId: string, transcript: string): Promise<ConversationContext> {
   const [memory, physical, mindBehavior] = await Promise.all([
@@ -64,6 +168,7 @@ function shouldTriggerSafety(context: ConversationContext, emotion: EmotionState
 export async function runDialogueTurn(input: DialogueAgentInput): Promise<DialogueAgentResult> {
   const turnId = `turn_${randomUUID()}`;
   const context = await buildConversationContext(input.userId, input.transcript);
+  await ensureDerivedFacts(input.userId, context);
   const listener = await runListenerAgent(input.transcript);
   const emotion = await refineEmotionState(listener, context.profile);
   const initialPlan = await planNextTurn({ emotion, context });

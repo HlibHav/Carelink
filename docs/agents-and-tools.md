@@ -39,7 +39,7 @@ All of these modules are simple functions that call OpenAI or manipulate in-memo
 
 - **OpenAI** – STT, embeddings, and all LLM prompts.  
 - **ElevenLabs** – text-to-speech.  
-- **Firestore** (via Memory Manager) – user state, memories, safety profiles.  
+- **Weaviate (via Memory Manager)** – user state, memories, safety profiles.  
 - **Scheduling Service** – stub service for reminders/notifications.  
 - **Event Bus** – SSE-based pub/sub with a persistent backlog.
 

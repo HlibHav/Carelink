@@ -157,8 +157,8 @@ try {
 }
 console.log('');
 
-// Test 5: Test without query (should use Firestore fallback)
-console.log('📋 Test 5: Fallback to Firestore (no query)');
+// Test 5: Test without query (should use recent-entry fallback)
+console.log('📋 Test 5: Fallback to recent entries (no query)');
 try {
   const searchRes = await fetch(`${MEMORY_MANAGER_URL}/memory/${userId}/retrieve-for-dialogue`, {
     method: 'POST',
@@ -183,7 +183,5 @@ console.log('══════════════════════�
 console.log('');
 console.log('📝 Next steps:');
 console.log('   1. Check Weaviate logs to verify vector search');
-console.log('   2. Check Firestore to verify metadata storage');
-console.log('   3. Create a playbook manually to test ACE strategies');
+console.log('   2. Create a playbook manually to test ACE strategies');
 console.log('');
-

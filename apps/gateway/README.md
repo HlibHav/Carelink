@@ -74,5 +74,5 @@ All `/api/*` routes require:
 
 - Emit Phoenix spans covering every engine/service round-trip.
 - Move Dialogue orchestrator prompts + reasoning into `agents/dialogue` and call them from the gateway.
-- Replace the in-memory session store with Firestore or Redis.
+- Replace the in-memory session store with a persistent store (e.g., Redis).
 - Implement SSE/WebSocket streaming so clients receive incremental transcripts/TTS chunks.

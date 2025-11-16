@@ -11,10 +11,8 @@ dotenv.config({ path: resolve(__dirname, '../../../.env/.env') });
 
 export const config = {
   port: Number(process.env.PORT ?? 4104),
-  firestore: {
-    projectId: process.env.GOOGLE_PROJECT_ID,
-    emulatorHost: process.env.FIRESTORE_EMULATOR_HOST,
-  },
+  memoryManagerUrl:
+    process.env.MEMORY_MANAGER_URL?.replace(/\/$/, '') ?? 'http://localhost:4103',
   nightly: {
     enabled: process.env.NIGHTLY_ENABLED !== 'false',
     scheduleCron: process.env.NIGHTLY_SCHEDULE_CRON ?? '0 2 * * *', // Default: 2 AM daily
@@ -23,4 +21,3 @@ export const config = {
     apiKey: process.env.OPENAI_API_KEY ?? '',
   },
 };
-

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
-import { getFirestore } from '@carelink/memory-storage';
+import { config } from '../config.js';
 
-const db = getFirestore();
+const baseUrl = config.memoryManagerUrl;
 
 export async function runCompress(
   userId: string,
@@ -10,37 +10,23 @@ export async function runCompress(
 ): Promise<{
   status: string;
   jobId: string;
-  compressedCount?: number;
-  retainedCount?: number;
 }> {
-  // TODO: Implement actual compression logic
-  // For now, return a queued status
-  const jobId = `compress_${randomUUID()}`;
+  const url = `${baseUrl}/memory/${userId}/compress`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(options ?? {}),
+  });
 
-  if (options?.dryRun) {
-    // In dry run mode, analyze what would be compressed without actually doing it
-    const olderThanDays = options.olderThanDays ?? 30;
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
-
-    // This is a placeholder - actual implementation would query Firestore
-    return {
-      status: 'dry-run',
-      jobId,
-      compressedCount: 0,
-      retainedCount: 0,
-    };
+  if (!response.ok) {
+    const details = await response.text().catch(() => '');
+    throw new Error(`Memory manager compress failed (${response.status}): ${details}`);
   }
 
-  // TODO: Implement actual compression
-  // - Query memories older than threshold
-  // - Consolidate similar memories
-  // - Archive old conversation turns
-  // - Update embeddings for consolidated memories
-
-  return {
-    status: 'queued',
-    jobId,
-  };
+  // Memory manager returns queued job info; if it changes, we still fall back to a stub
+  try {
+    return (await response.json()) as { status: string; jobId: string };
+  } catch {
+    return { status: 'queued', jobId: `compress_${randomUUID()}` };
+  }
 }
-

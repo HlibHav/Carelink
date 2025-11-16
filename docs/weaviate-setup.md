@@ -10,9 +10,7 @@ CareLink uses **local Weaviate** for vector-based memory storage. This provides:
 
 ## Architecture
 
-- **Weaviate**: Stores embeddings for facts, goals, gratitude entries (vector search)
-- **Firestore**: Stores structured metadata (user profiles, conversation sessions, playbooks)
-- **Hybrid Approach**: Metadata in Firestore references vectors in Weaviate
+- **Weaviate**: Stores embeddings plus structured metadata (user profiles, conversation sessions, playbooks, turns).
 
 ## Quick Start
 
@@ -119,11 +117,10 @@ For production, consider:
 
 ## Migration Notes
 
-If you have existing data in another vector database:
+If you have existing data in another datastore:
 
 1. Export embeddings and metadata
 2. Import into Weaviate using batch operations
-3. Update references in Firestore
 
 See `docs/weaviate-schema-analysis.md` for schema details.
 
@@ -162,4 +159,3 @@ lsof -i :8080
 - [Weaviate Documentation](https://weaviate.io/developers/weaviate)
 - [Weaviate TypeScript Client](https://weaviate.io/developers/weaviate/client-libraries/typescript)
 - [Weaviate Docker Setup](https://weaviate.io/developers/weaviate/installation/docker-compose)
-

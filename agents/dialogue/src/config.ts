@@ -22,6 +22,10 @@ if (envPath) {
   dotenv.config();
 }
 
+console.log(
+  `[Dialogue Config] Port envs => DIALOGUE_AGENT_PORT=${process.env.DIALOGUE_AGENT_PORT ?? 'unset'}, PORT=${process.env.PORT ?? 'unset'}`,
+);
+
 if (process.env.OPENAI_API_KEY) {
   console.log('[Dialogue Config] OPENAI_API_KEY detected');
 } else {
@@ -40,7 +44,7 @@ const allowedOrigins = (() => {
   return defaultOrigins;
 })();
 
-const resolvedPort = Number(process.env.DIALOGUE_AGENT_PORT ?? process.env.PORT ?? 4200);
+const resolvedPort = Number(process.env.DIALOGUE_AGENT_PORT ?? 4200);
 
 export const config = {
   env: process.env.NODE_ENV ?? 'development',

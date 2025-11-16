@@ -19,14 +19,14 @@ CareLink now runs as a collection of small Node/TypeScript services that communi
 
 4. **Shared Services**  
    - `services/event-bus`: SSE transport with backlog replay support.  
-   - `services/memory-manager`: Weaviate + Firestore API for turns, facts, goals, safety profiles. Weaviate handles semantic search, Firestore stores metadata.  
+   - `services/memory-manager`: Weaviate-backed API for turns, facts, goals, safety profiles, and playbooks.  
    - `services/scheduling`: stub scheduling/notification service used by Coach and Safety.
 
 5. **External Providers**  
    - OpenAI (STT, LLM prompts, embeddings).  
    - ElevenLabs (single multi-tone voice).  
    - Weaviate (vector database for semantic memory search).  
-   - Firestore (metadata storage: profiles, sessions, playbooks).
+   - Weaviate (semantic + structured storage for profiles, sessions, memories).
 
 ## Runtime Flow (Simplified)
 

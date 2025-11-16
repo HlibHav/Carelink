@@ -190,10 +190,10 @@ const important = await searchMemories(
 ## Data Storage Notes
 
 - **Weaviate**: Stores vector embeddings and performs semantic search
-- **Firestore**: Stores metadata and references to Weaviate objects via `weaviateId`
-- **Mapping**: 
-  - Facts: `type` (Firestore) → `factType` (Weaviate)
-  - Goals: `status` (Firestore) → `goalStatus` (Weaviate)
+- **Structured metadata**: Persisted directly in Weaviate (`UserProfile`, `ConversationMeta`, `Turn`)
+- **Mapping examples**: 
+  - Facts: `factType` field denotes categories such as family/hobby/health
+  - Goals: `goalStatus` field tracks `active`/`done`
   - Embeddings: Generated automatically by Weaviate via text2vec-openai
 
 ## Best Practices
@@ -204,4 +204,3 @@ const important = await searchMemories(
 4. **Update retrievalCount** - Track usage for ACE playbooks
 5. **Use factType/goalStatus** - Enables precise filtering
 6. **Keep metadata lightweight** - Not indexed, use for non-searchable data
-

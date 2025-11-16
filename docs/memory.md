@@ -1,9 +1,6 @@
 # Memory Specification
 
-CareLink uses **Weaviate** (vector database) + **Firestore** (metadata) to implement both:
-
-- **Semantic memory** (RAG-style retrieval via Weaviate)
-- **Structured metadata** (profiles, sessions, playbooks in Firestore)
+CareLink now stores both semantic vectors and structured metadata inside **Weaviate**. The notes below describe the legacy Firestore schema and are kept for reference only; new deployments should rely on the `Memory`, `UserProfile`, `ConversationMeta`, and `Turn` classes in Weaviate.
 
 ---
 
@@ -326,4 +323,3 @@ During real-time retrieval (`/retrieve-for-dialogue`), the daytime service:
 If no playbook exists, the service falls back to default behavior (simple recency-based retrieval).
 
 See `docs/architecture/memory-nightly-contract.md` for detailed API specifications.
-

@@ -35,7 +35,7 @@ const REMINDER_KEYWORDS: Array<{ category: ReminderCategory; patterns: RegExp[] 
   },
 ];
 
-function extractPreferredName(profile?: Record<string, unknown>): string | undefined {
+export function extractPreferredName(profile?: Record<string, unknown>): string | undefined {
   if (!profile) return undefined;
   const directCandidates = [
     profile.preferredName,
@@ -92,13 +92,18 @@ function buildReminderCandidates(goals: MemoryEntry[], facts: MemoryEntry[]): Ro
     if (!text) continue;
     const category = categorizeReminder(text);
     if (!category) continue;
+    const metadata =
+      entry.metadata && typeof entry.metadata === 'object'
+        ? (entry.metadata as Record<string, unknown>)
+        : undefined;
+    const scheduled = typeof metadata?.scheduled_at === 'string' ? metadata.scheduled_at : undefined;
+    const timeFallback = typeof metadata?.time === 'string' ? metadata.time : undefined;
     candidates.push({
       title: text,
-      details: typeof entry.metadata?.note === 'string' ? entry.metadata.note : undefined,
+      details: typeof metadata?.note === 'string' ? metadata.note : undefined,
       category,
       importance: entry.importance,
-      suggestedTime:
-        typeof entry.metadata?.scheduled_at === 'string' ? entry.metadata.scheduled_at : entry.metadata?.time ?? undefined,
+      suggestedTime: scheduled ?? timeFallback,
     });
   }
   // Deduplicate by title

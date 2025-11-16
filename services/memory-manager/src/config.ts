@@ -15,12 +15,8 @@ dotenv.config({ path: envPath });
 
 export const config = {
   port: Number(process.env.PORT ?? 4103),
-  firestore: {
-    projectId: process.env.GOOGLE_PROJECT_ID,
-    emulatorHost: process.env.FIRESTORE_EMULATOR_HOST,
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-  },
   weaviate: {
+    url: process.env.WEAVIATE_URL,
     host: process.env.WEAVIATE_HOST || 'localhost',
     port: Number(process.env.WEAVIATE_PORT || 8082),
     scheme: (process.env.WEAVIATE_SCHEME === 'https' ? 'https' : 'http') as 'http' | 'https',

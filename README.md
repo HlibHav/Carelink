@@ -19,7 +19,7 @@ The repository is organised so each agent/engine/service can run independently d
 | `engines/physical` | Mock vitals analytics service (`/state`, `/trends`, `/alerts/stream`). |
 | `engines/mind-behavior` | Mock emotional/cognitive/social/routine analytics service. |
 | `services/event-bus` | SSE bus with a persistent backlog used by all agents. |
-| `services/memory-manager` | Weaviate + Firestore API for storing turns, memories, and safety profiles. Weaviate handles semantic search, Firestore stores metadata. |
+| `services/memory-manager` | Weaviate-backed API for storing turns, memories, safety profiles, and playbooks. |
 | `services/scheduling` | Stub scheduling/notification API used by Coach and Safety agents. |
 | `apps/gateway` | Public HTTP API (Express) that validates requests and fans out to Dialogue agent + ElevenLabs. |
 | `frontend` | Developer playground for driving the backend and hosted ElevenLabs widget. |
