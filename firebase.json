@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "carelink/out",
+    "public": "frontend/dist",
     "ignore": [
       "firebase.json",
       "**/.*",
