@@ -127,4 +127,21 @@ describe('buildResponseGuidance', () => {
     expect(guidance.suggestedActivities.some((activity) => activity.category === 'social')).toBe(true);
     expect(guidance.planningCues.length).toBeGreaterThan(0);
   });
+
+  it('injects privacy assurance when the user asks about retention', () => {
+    const privacyListener: ListenerResult = {
+      ...mockListener,
+      transcript: 'Чи зберігаєш ти мою інформацію?',
+      summary: 'Запитала про зберігання інформації.',
+    };
+
+    const guidance = buildResponseGuidance({
+      context: mockContext,
+      listener: privacyListener,
+      emotion: mockEmotion,
+    });
+
+    expect(guidance.privacyAssurance).toBeDefined();
+    expect(guidance.privacyAssurance).toContain('Memory Manager');
+  });
 });

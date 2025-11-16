@@ -9,6 +9,7 @@ import type {
   ModePlan,
   ResponseGuidance,
 } from './types.js';
+import { MEMORY_POLICY_BASELINE, resolvePrivacyStatement } from './privacyPolicy.js';
 
 const systemPrompt = `${loadPrompt('system-life-companion.md')}\n\n${loadPrompt('agent-coach.md')}`;
 
@@ -32,6 +33,10 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
     input.directives.identityFacts && input.directives.identityFacts.length > 0
       ? `IMPORTANT Identity Facts (use these to make the user feel seen and remembered):\n${input.directives.identityFacts.map((f) => `- ${f}`).join('\n')}`
       : null;
+
+  const privacySection = input.directives.privacyAssurance
+    ? `Privacy Guidance: ${input.directives.privacyAssurance}`
+    : null;
 
   const contextBlocks = [
     nameSection,
@@ -57,9 +62,20 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
     input.directives.personalizationNote
       ? `Personalization Note: ${input.directives.personalizationNote}`
       : null,
+    privacySection,
   ]
     .filter(Boolean)
     .join('\n\n');
+
+  const customPrivacyStatement = resolvePrivacyStatement(input.context.profile);
+  const memoryPolicy = {
+    stores: ['shared_memories', 'conversation_turns'],
+    storage_service: 'CareLink Memory Manager',
+    purpose: 'personalize future support and remember what the user shares',
+    baseline_blurb: MEMORY_POLICY_BASELINE,
+    statement: customPrivacyStatement ?? MEMORY_POLICY_BASELINE,
+    custom_statement_enabled: Boolean(customPrivacyStatement),
+  };
 
   const instructions = {
     transcript: input.listener.transcript,
@@ -68,6 +84,7 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
     plan: input.plan,
     context_blocks: contextBlocks,
     directives: input.directives,
+    memory_policy: memoryPolicy,
   };
 
   const completion = await client.chat.completions.create({
