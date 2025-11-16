@@ -23,9 +23,21 @@ interface CoachInput {
 export async function generateCoachReply(input: CoachInput): Promise<CoachResponse> {
   const client = getOpenAIClient();
 
+  // Build context blocks with explicit emphasis on name and identity facts
+  const nameSection = input.directives.preferredName
+    ? `IMPORTANT: User's preferred name is "${input.directives.preferredName}". ALWAYS use this name when addressing them.`
+    : null;
+
+  const identityFactsSection =
+    input.directives.identityFacts && input.directives.identityFacts.length > 0
+      ? `IMPORTANT Identity Facts (use these to make the user feel seen and remembered):\n${input.directives.identityFacts.map((f) => `- ${f}`).join('\n')}`
+      : null;
+
   const contextBlocks = [
+    nameSection,
+    identityFactsSection,
     input.context.profile ? `Profile: ${JSON.stringify(input.context.profile)}` : null,
-    input.context.facts.length ? `Facts:\n${input.context.facts.map((f) => `- ${f.text}`).join('\n')}` : null,
+    input.context.facts.length ? `Additional Facts:\n${input.context.facts.map((f) => `- ${f.text}`).join('\n')}` : null,
     input.context.goals.length
       ? `Goals:\n${input.context.goals.map((f) => `- ${f.text} (${f.importance ?? 'active'})`).join('\n')}`
       : null,
@@ -41,6 +53,9 @@ export async function generateCoachReply(input: CoachInput): Promise<CoachRespon
       ? `Mind & Behavior Summary:\n${input.context.mindBehaviorState.summary}\nDomains:\n${input.context.mindBehaviorState.domains
           .map((domain) => `- ${domain.label}: ${domain.status} (${domain.score})`)
           .join('\n')}`
+      : null,
+    input.directives.personalizationNote
+      ? `Personalization Note: ${input.directives.personalizationNote}`
       : null,
   ]
     .filter(Boolean)

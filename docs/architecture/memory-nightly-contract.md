@@ -98,7 +98,9 @@ Health check endpoint.
 
 ## Playbook Structure
 
-Playbooks are stored in Firestore at `users/{userId}/playbooks/{playbookId}`:
+> **Note:** Playbooks are now stored inside the Weaviate `UserProfile` class. The legacy Firestore contract below is preserved for historical reference.
+
+Playbooks were previously stored in Firestore at `users/{userId}/playbooks/{playbookId}`:
 
 ```typescript
 {
@@ -197,9 +199,7 @@ The nightly agent uses multiple feedback signals:
 Environment variables:
 
 - `PORT` - Server port (default: 4104)
-- `GOOGLE_PROJECT_ID` - Google Cloud project ID
-- `FIRESTORE_EMULATOR_HOST` - Firestore emulator host (for local development)
+- `MEMORY_MANAGER_URL` - Base URL of the Memory Manager (default: `http://localhost:4103`)
 - `NIGHTLY_SCHEDULE_CRON` - Cron expression for scheduled jobs (default: `0 2 * * *`)
 - `NIGHTLY_ENABLED` - Boolean flag to enable/disable nightly jobs (default: `true`)
 - `OPENAI_API_KEY` - OpenAI API key for LLM-based generation/reflection/curation
-

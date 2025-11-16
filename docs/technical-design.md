@@ -17,8 +17,7 @@
     - Play back audio responses
 
 - **Database**
-  - **Weaviate**: Vector database for semantic memory search
-  - **Firestore (Native mode)**: Metadata storage (profiles, sessions, playbooks)
+  - **Weaviate**: Vector + structured storage (Memory, UserProfile, ConversationMeta, Turn)
 
 - **AI / ML**
   - **OpenAI**:
@@ -65,7 +64,7 @@
 
 - Clients obtain a short-lived access token from the identity layer (out of scope here) and attach it as `Authorization: Bearer <token>`.
 - Every request also carries:
-  - `X-User-Id`: stable Firestore user id.
+  - `X-User-Id`: stable CareLink user id (matches Weaviate records).
   - `X-Device-Id`: client-generated identifier used to correlate proactive pings.
   - `X-Client-Version`: semantic version for compatibility checks.
 - If auth fails or the token is missing → `401` with the standard error envelope described below.
@@ -631,7 +630,7 @@ async function handleUserUtterance(input: {
 
 ## Error Handling
 
-- Wrap external calls (OpenAI, ElevenLabs, Firestore) in small wrappers:
+- Wrap external calls (OpenAI, ElevenLabs, Weaviate) in small wrappers:
   - Retry on 5xx and network timeouts (1–2 retries).
   - On failure:
     - log to console + Phoenix

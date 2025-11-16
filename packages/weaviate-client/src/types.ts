@@ -21,6 +21,7 @@ export interface MemoryVector {
 }
 
 export interface WeaviateConfig {
+  url?: string;
   host?: string;
   port?: number;
   scheme?: 'http' | 'https';
@@ -47,4 +48,3 @@ export interface SearchResult {
   score?: number;
   vector?: number[];
 }
-

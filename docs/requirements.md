@@ -79,7 +79,7 @@
 
 - The system MUST:
   - Allow user to express 1–3 things they are grateful for.
-  - Store gratitude entries: metadata in Firestore, vector embeddings in Weaviate.
+  - Store gratitude entries: metadata + vectors in Weaviate (`Memory` class).
   - Be able to recall past gratitude for reflection (e.g. weekly summary).
 
 ### FR-6: Long-Term Memory
@@ -218,7 +218,7 @@
 
 ### NFR-3: Privacy & Data Handling
 
-- Personal data stored in Firestore SHOULD be minimal.
+- Personal data stored in Weaviate SHOULD be minimal and encrypted if sensitive.
 - For hackathon:
   - Use pseudonymous `userId`s (no real names required).
   - Do NOT store raw audio by default.

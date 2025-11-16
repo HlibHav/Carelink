@@ -9,12 +9,9 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch"
   },
-  "dependencies": {
-    "@google-cloud/firestore": "^8.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.11.30",
     "typescript": "^5.4.2"
   }
 }
-

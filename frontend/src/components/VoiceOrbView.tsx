@@ -19,7 +19,7 @@ const envSignedUrl = (env.VITE_ELEVENLABS_SIGNED_URL ?? '').trim();
 const envConversationToken = (env.VITE_ELEVENLABS_CONVERSATION_TOKEN ?? '').trim();
 const envConnectionType = (env.VITE_ELEVENLABS_CONNECTION_TYPE ?? 'webrtc').trim();
 const envServerLocation = (env.VITE_ELEVENLABS_SERVER_LOCATION ?? 'us').trim();
-const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? 'demo-user').trim();
+const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? env.DIALOGUE_DEFAULT_USER_ID ?? 'demo-user').trim();
 const envTextOnly = (env.VITE_ELEVENLABS_TEXT_ONLY ?? '').toLowerCase() === 'true';
 const envVolume = Number(env.VITE_ELEVENLABS_VOLUME ?? '0.85');
 const envAutoConnectPreference = (env.VITE_ELEVENLABS_AUTO_CONNECT ?? '').trim().toLowerCase();

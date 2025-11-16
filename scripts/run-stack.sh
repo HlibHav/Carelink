@@ -25,10 +25,17 @@ kill_port() {
   fi
 }
 
-# Check if Docker is running
-if ! docker info >/dev/null 2>&1; then
-  echo "❌ Docker is not running. Please start Docker and try again."
-  exit 1
+USE_WEAVIATE_CLOUD=0
+if [[ -n "${WEAVIATE_URL:-}" ]]; then
+  USE_WEAVIATE_CLOUD=1
+fi
+
+# Check if Docker is running (only needed for local Weaviate)
+if [[ $USE_WEAVIATE_CLOUD -eq 0 ]]; then
+  if ! docker info >/dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker and try again."
+    exit 1
+  fi
 fi
 
 # Check for ports that might be in use
@@ -61,27 +68,49 @@ if [ ${#OCCUPIED_PORTS[@]} -gt 0 ]; then
   fi
 fi
 
-# Start Weaviate via Docker Compose
-echo "🚀 Starting Weaviate..."
-cd "$ROOT_DIR"
-if docker-compose -f docker-compose.weaviate.yml ps | grep -q "Up"; then
-  echo "✅ Weaviate is already running"
+if [[ $USE_WEAVIATE_CLOUD -eq 0 ]]; then
+  # Start Weaviate via Docker Compose
+  echo "🚀 Starting Weaviate..."
+  cd "$ROOT_DIR"
+  if docker-compose -f docker-compose.weaviate.yml ps | grep -q "Up"; then
+    echo "✅ Weaviate is already running"
+  else
+    docker-compose -f docker-compose.weaviate.yml up -d
+    echo "⏳ Waiting for Weaviate to be ready..."
+    
+    # Wait for Weaviate to be ready (max 30 seconds)
+    for i in {1..30}; do
+      if curl -s http://localhost:8082/v1/.well-known/ready >/dev/null 2>&1; then
+        echo "✅ Weaviate is ready"
+        break
+      fi
+      if [ $i -eq 30 ]; then
+        echo "⚠️  Weaviate did not become ready in time, but continuing..."
+      else
+        sleep 1
+      fi
+    done
+  fi
+
+  # Optionally migrate data from a cloud Weaviate into the local instance
+  # This uses scripts/migrate-weaviate.ts with SOURCE_* env vars pointing to cloud
+  if [ -f "$ROOT_DIR/scripts/migrate-weaviate.ts" ]; then
+    echo "📥 Running optional Weaviate migration from cloud (if SOURCE_* env vars are set)..."
+
+    # Ensure root dependencies for the migration script
+    if [ ! -d "$ROOT_DIR/node_modules" ]; then
+      echo "📦 Installing root dependencies for migration script..."
+      (cd "$ROOT_DIR" && npm install --silent)
+    fi
+
+    (
+      cd "$ROOT_DIR"
+      # Run migration; don't fail the whole stack if migration errors
+      npx tsx scripts/migrate-weaviate.ts || echo "⚠️ Weaviate migration failed or was skipped; continuing stack startup..."
+    )
+  fi
 else
-  docker-compose -f docker-compose.weaviate.yml up -d
-  echo "⏳ Waiting for Weaviate to be ready..."
-  
-  # Wait for Weaviate to be ready (max 30 seconds)
-  for i in {1..30}; do
-    if curl -s http://localhost:8082/v1/.well-known/ready >/dev/null 2>&1; then
-      echo "✅ Weaviate is ready"
-      break
-    fi
-    if [ $i -eq 30 ]; then
-      echo "⚠️  Weaviate did not become ready in time, but continuing..."
-    else
-      sleep 1
-    fi
-  done
+  echo "☁️  Using WEAVIATE_URL=${WEAVIATE_URL}; skipping local Docker weaviate startup."
 fi
 
 # Function to wait for a service to be ready
@@ -118,7 +147,7 @@ SERVICES_PHASE2=(
   "Mind & Behavior Engine;engines/mind-behavior;npm run dev;http://localhost:4102/healthz"
 )
 
-# Phase 3: Memory Manager (depends on Weaviate, Firestore)
+# Phase 3: Memory Manager (depends on Weaviate)
 echo "📦 Phase 3: Starting Memory Manager..."
 SERVICES_PHASE3=(
   "Memory Manager;services/memory-manager;npm run dev;http://localhost:4103/healthz"

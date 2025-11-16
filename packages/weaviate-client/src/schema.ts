@@ -165,7 +165,8 @@ export async function createMemorySchema(client: WeaviateClient): Promise<void> 
     await client.schema.classDeleter().withClassName('Memory').do();
   } catch (error) {
     if (!isNotFoundError(error)) {
-      console.error('❌ Failed to inspect existing Memory schema:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('❌ Failed to inspect existing Memory schema:', errorMessage);
       throw error;
     }
   }
@@ -179,7 +180,8 @@ export async function createMemorySchema(client: WeaviateClient): Promise<void> 
       console.warn('⚠️ Memory collection already exists, continuing');
       return;
     }
-    console.error('❌ Failed to create Memory collection schema:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to create Memory collection schema:', errorMessage);
     throw error;
   }
 }
@@ -191,7 +193,8 @@ export async function getMemorySchema(client: WeaviateClient): Promise<any> {
   try {
     return await client.schema.classGetter().withClassName('Memory').do();
   } catch (error) {
-    console.error('❌ Failed to get Memory collection schema:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to get Memory collection schema:', errorMessage);
     throw error;
   }
 }
@@ -205,7 +208,8 @@ export async function deleteMemorySchema(client: WeaviateClient): Promise<void> 
     await client.schema.classDeleter().withClassName('Memory').do();
     console.log('✅ Memory collection schema deleted');
   } catch (error) {
-    console.error('❌ Failed to delete Memory collection schema:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to delete Memory collection schema:', errorMessage);
     throw error;
   }
 }
@@ -225,9 +229,183 @@ export async function updateMemorySchema(
     // Note: Actual schema updates would require Weaviate API calls
     // For now, we'll just log the attempt
   } catch (error) {
-    console.error('❌ Failed to update Memory collection schema:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('❌ Failed to update Memory collection schema:', errorMessage);
     throw error;
   }
+}
+
+const GENERIC_NON_VECTOR_SCHEMA = {
+  vectorizer: 'none',
+};
+
+export const USER_PROFILE_COLLECTION_SCHEMA = {
+  class: 'UserProfile',
+  description: 'User profile, preferences, and playbook metadata',
+  ...GENERIC_NON_VECTOR_SCHEMA,
+  properties: [
+    {
+      name: 'userId',
+      dataType: ['string'],
+      description: 'User identifier',
+      indexFilterable: true,
+      tokenization: 'field',
+    },
+    {
+      name: 'profile',
+      dataType: ['text'],
+      description: 'Serialized profile JSON',
+    },
+    {
+      name: 'safety',
+      dataType: ['text'],
+      description: 'Serialized safety profile JSON',
+    },
+    {
+      name: 'playbook',
+      dataType: ['text'],
+      description: 'Serialized playbook JSON',
+    },
+    {
+      name: 'updatedAt',
+      dataType: ['date'],
+      description: 'Last update timestamp',
+      indexFilterable: true,
+    },
+  ],
+};
+
+export const CONVERSATION_COLLECTION_SCHEMA = {
+  class: 'ConversationMeta',
+  description: 'Conversation session metadata per user',
+  ...GENERIC_NON_VECTOR_SCHEMA,
+  properties: [
+    {
+      name: 'userId',
+      dataType: ['string'],
+      indexFilterable: true,
+      tokenization: 'field',
+      description: 'User identifier',
+    },
+    {
+      name: 'sessionId',
+      dataType: ['string'],
+      indexFilterable: true,
+      tokenization: 'field',
+      description: 'Session identifier',
+    },
+    {
+      name: 'startedAt',
+      dataType: ['date'],
+      description: 'Session start timestamp',
+      indexFilterable: true,
+    },
+    {
+      name: 'updatedAt',
+      dataType: ['date'],
+      description: 'Last update timestamp',
+      indexFilterable: true,
+    },
+    {
+      name: 'lastMode',
+      dataType: ['string'],
+      description: 'Last known mode for the session',
+      tokenization: 'field',
+    },
+    {
+      name: 'lastEmotion',
+      dataType: ['text'],
+      description: 'Serialized emotion JSON',
+    },
+  ],
+};
+
+export const TURN_COLLECTION_SCHEMA = {
+  class: 'Turn',
+  description: 'Individual conversation turns for analytics',
+  ...GENERIC_NON_VECTOR_SCHEMA,
+  properties: [
+    {
+      name: 'userId',
+      dataType: ['string'],
+      description: 'User identifier',
+      indexFilterable: true,
+      tokenization: 'field',
+    },
+    {
+      name: 'sessionId',
+      dataType: ['string'],
+      description: 'Conversation session identifier',
+      indexFilterable: true,
+      tokenization: 'field',
+    },
+    {
+      name: 'turnId',
+      dataType: ['string'],
+      description: 'Original turn identifier from dialogue agent',
+      indexFilterable: true,
+      tokenization: 'field',
+    },
+    {
+      name: 'role',
+      dataType: ['string'],
+      description: 'Role for the turn (user/assistant)',
+      indexFilterable: true,
+      tokenization: 'field',
+    },
+    {
+      name: 'text',
+      dataType: ['text'],
+      description: 'Turn text content',
+    },
+    {
+      name: 'emotion',
+      dataType: ['text'],
+      description: 'Serialized emotion payload',
+    },
+    {
+      name: 'mode',
+      dataType: ['string'],
+      description: 'Assistant mode for the turn',
+      tokenization: 'field',
+    },
+    {
+      name: 'metadata',
+      dataType: ['text'],
+      description: 'Serialized metadata JSON',
+    },
+    {
+      name: 'createdAt',
+      dataType: ['date'],
+      description: 'Creation timestamp',
+      indexFilterable: true,
+    },
+  ],
+};
+
+async function ensureGenericClass(client: WeaviateClient, schema: { class: string }) {
+  try {
+    await client.schema.classGetter().withClassName(schema.class).do();
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      await client.schema.classCreator().withClass(schema as any).do();
+      console.log(`✅ ${schema.class} schema created successfully`);
+    } else {
+      throw error;
+    }
+  }
+}
+
+export async function ensureUserProfileSchema(client: WeaviateClient): Promise<void> {
+  await ensureGenericClass(client, USER_PROFILE_COLLECTION_SCHEMA);
+}
+
+export async function ensureConversationSchema(client: WeaviateClient): Promise<void> {
+  await ensureGenericClass(client, CONVERSATION_COLLECTION_SCHEMA);
+}
+
+export async function ensureTurnSchema(client: WeaviateClient): Promise<void> {
+  await ensureGenericClass(client, TURN_COLLECTION_SCHEMA);
 }
 
 /**

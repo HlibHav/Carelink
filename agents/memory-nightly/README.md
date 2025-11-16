@@ -30,8 +30,7 @@ See `docs/architecture/memory-nightly-contract.md` for detailed API specificatio
 Environment variables:
 
 - `PORT` - Server port (default: 4104)
-- `GOOGLE_PROJECT_ID` - Google Cloud project ID
-- `FIRESTORE_EMULATOR_HOST` - Firestore emulator host (for local development)
+- `MEMORY_MANAGER_URL` - Base URL of the Memory Manager service (default: `http://localhost:4103`)
 - `NIGHTLY_ENABLED` - Enable/disable nightly jobs (default: `true`)
 - `NIGHTLY_SCHEDULE_CRON` - Cron expression for scheduled jobs (default: `0 2 * * *` - 2 AM daily)
 - `OPENAI_API_KEY` - OpenAI API key for LLM-based generation/reflection/curation
@@ -89,11 +88,10 @@ curl -X POST http://localhost:4104/nightly/evolve-playbook/user_123 \
 1. **Scaling**: Consider running nightly jobs in a separate service/container to avoid impacting daytime operations
 2. **Error Handling**: Implement retry logic and dead-letter queues for failed jobs
 3. **Monitoring**: Add logging and metrics for job execution times and success rates
-4. **User Iteration**: In production, iterate over all active users from Firestore rather than hardcoding user IDs
+4. **User Iteration**: In production, iterate over all active users from a canonical user service rather than hardcoding user IDs
 
 ## Related Documentation
 
 - `docs/architecture/memory-nightly-contract.md` - Detailed API contract
 - `docs/architecture/carelink_agents.md` - Agent architecture overview
 - `docs/memory.md` - Memory system documentation
-
