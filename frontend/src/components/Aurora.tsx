@@ -149,15 +149,11 @@ export function Aurora({
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.canvas.style.backgroundColor = 'transparent';
 
-    let program: Program | undefined;
-
     function resize() {
       if (!container) return;
       const { offsetWidth: width, offsetHeight: height } = container;
       renderer.setSize(width, height);
-      if (program) {
-        program.uniforms.uResolution.value = [width, height];
-      }
+      program.uniforms.uResolution.value = [width, height];
     }
 
     window.addEventListener('resize', resize);
@@ -172,7 +168,7 @@ export function Aurora({
       return [c.r, c.g, c.b];
     });
 
-    program = new Program(gl, {
+    const program = new Program(gl, {
       vertex: VERT,
       fragment: FRAG,
       uniforms: {

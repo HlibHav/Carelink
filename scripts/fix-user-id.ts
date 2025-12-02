@@ -21,7 +21,7 @@ const DEFAULT_USER_ID =
   process.env.VITE_ELEVENLABS_USER_ID ??
   process.env.DIALOGUE_DEFAULT_USER_ID ??
   process.env.DEMO_USER_ID ??
-  'demo-user';
+  'test-user';
 
 async function fixUserIds(): Promise<void> {
   const client = await getWeaviateClient();

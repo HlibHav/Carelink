@@ -99,6 +99,15 @@ const ensureCredentials = () => {
 
 let elevenLabsClient: ElevenLabsClient | null = null;
 
+const debugLog = (...parts: unknown[]) => {
+  if (!config.elevenLabs.debug) {
+    return;
+  }
+  const prefix = `[ElevenLabsService ${new Date().toISOString()}]`;
+  // eslint-disable-next-line no-console
+  console.debug(prefix, ...parts);
+};
+
 const getClient = () => {
   if (!elevenLabsClient) {
     elevenLabsClient = new ElevenLabsClient({
@@ -157,7 +166,23 @@ export const elevenLabsService = {
       outputFormat: formatToOutput[format] ?? formatToOutput['audio/mpeg'],
     };
 
-    const stream = await getClient().textToSpeech.convert(config.elevenLabs.voiceId, payload);
+    debugLog('TTS request start', {
+      voiceId: config.elevenLabs.voiceId?.slice(0, 8) ?? 'unset',
+      tone,
+      model: config.elevenLabs.modelId,
+      textLength: text.length,
+      outputFormat: payload.outputFormat,
+    });
+
+    let stream: Awaited<ReturnType<ReturnType<typeof getClient>['textToSpeech']['convert']>>;
+    try {
+      stream = await getClient().textToSpeech.convert(config.elevenLabs.voiceId, payload);
+    } catch (error) {
+      debugLog('TTS request failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     const reader = stream.getReader();
     const chunks: Buffer[] = [];
@@ -173,6 +198,12 @@ export const elevenLabsService = {
     }
 
     const buffer = Buffer.concat(chunks);
+
+    debugLog('TTS request success', {
+      tone,
+      mimeType: format,
+      bytes: buffer.length,
+    });
 
     return {
       audioBase64: buffer.toString('base64'),

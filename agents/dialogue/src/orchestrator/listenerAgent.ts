@@ -1,4 +1,8 @@
+import { trace } from '@opentelemetry/api';
+
 import { getOpenAIClient, openAiModels } from '../services/openAIClient.js';
+import { logLlmTrace } from '../services/traceLogger.js';
+import { setLlmSpanAttributes } from '../services/phoenixClient.js';
 
 import type { ListenerResult } from './types.js';
 
@@ -21,17 +25,41 @@ Facts should only include stable information the user stated about their life. I
 export async function runListenerAgent(transcript: string): Promise<ListenerResult> {
   const client = getOpenAIClient();
 
+  const messages = [
+    { role: 'system', content: systemPrompt.trim() },
+    {
+      role: 'user',
+      content: `Conversation transcript:\n${transcript}`,
+    },
+  ];
+
   const completion = await client.chat.completions.create({
     model: openAiModels.chat,
     temperature: 0.2,
+    max_tokens: 120,
     response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: systemPrompt.trim() },
-      {
-        role: 'user',
-        content: `Conversation transcript:\n${transcript}`,
-      },
-    ],
+    messages,
+  });
+
+  const span = trace.getActiveSpan();
+  if (span) {
+    // Set LLM attributes using OpenTelemetry semantic conventions
+    setLlmSpanAttributes(span, messages, {
+      model: openAiModels.chat,
+      choices: completion.choices,
+      usage: completion.usage,
+    });
+    // Keep legacy events for backward compatibility
+    span.addEvent('llm.prompt', { phase: 'listener_agent', prompt: JSON.stringify(messages) });
+    span.addEvent('llm.response', { phase: 'listener_agent', response: JSON.stringify(completion) });
+  }
+
+  logLlmTrace({
+    phase: 'listener_agent',
+    model: openAiModels.chat,
+    messages,
+    response: completion,
+    metadata: { transcriptLength: transcript.length },
   });
 
   const content = completion.choices[0]?.message?.content ?? '{}';

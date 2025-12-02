@@ -123,21 +123,24 @@ export async function insertMemory(
 export async function searchMemories(
   client: WeaviateClient,
   query: string,
-  userId: string,
+  userId?: string | null,
   options: SearchOptions = {}
 ): Promise<SearchResult[]> {
   await ensureCollection(client);
   
   const limit = options.limit || 10;
   
-  // Build where filter - combine userId and optional filters
-  const filters: any[] = [
-    {
+  // Build where filter - only add userId filter if provided (allows global searches)
+  const filters: any[] = [];
+  
+  // Only filter by userId if provided and not null/undefined (null/undefined means global search across all users)
+  if (userId != null && userId !== '') {
+    filters.push({
       path: ['userId'],
       operator: 'Equal',
       valueString: userId,
-    },
-  ];
+    });
+  }
 
   // Category filter
   if (options.category) {
@@ -194,25 +197,29 @@ export async function searchMemories(
     }
   }
 
-  // Combine filters with AND
-  const whereClause: any =
-    filters.length === 1
-      ? filters[0]
-      : {
-          operator: 'And',
-          operands: filters,
-        };
-
-  // Perform semantic search with nearText
+  // Build where clause - only include if we have filters
+  // If no filters (global search), don't add where clause at all
   const builder = client.graphql
     .get()
     .withClassName(COLLECTION_NAME)
     .withFields('userId category text importance factType goalStatus metadata createdAt updatedAt retrievalCount lastRetrievedAt _additional { id distance }')
     .withNearText({
       concepts: [query],
-    })
-    .withWhere(whereClause)
-    .withLimit(limit);
+    });
+
+  // Only add where clause if we have filters
+  if (filters.length > 0) {
+    const whereClause: any =
+      filters.length === 1
+        ? filters[0]
+        : {
+            operator: 'And',
+            operands: filters,
+          };
+    builder.withWhere(whereClause);
+  }
+
+  builder.withLimit(limit);
 
   const result = await builder.do();
 

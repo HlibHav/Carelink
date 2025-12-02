@@ -12,12 +12,34 @@ import {
   ensureConversationSchema,
   ensureTurnSchema,
 } from '@carelink/weaviate-client';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { consolidateConversationTurns } from './consolidation.js';
 
 import { config } from './config.js';
+import { initPhoenixOtel } from './phoenixOtel.js';
+
+initPhoenixOtel('memory-manager');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+
+// Create OTEL spans for each HTTP request so Phoenix shows service-level traces.
+const mmTracer = trace.getTracer('memory-manager');
+app.use((req, res, next) => {
+  const span = mmTracer.startSpan(`HTTP ${req.method} ${req.path}`);
+  span.setAttribute('http.method', req.method);
+  span.setAttribute('http.route', req.path);
+  span.setAttribute('service.name', 'memory-manager');
+  res.on('finish', () => {
+    span.setAttribute('http.status_code', res.statusCode);
+    if (res.statusCode >= 500) {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    }
+    span.end();
+  });
+  next();
+});
 
 const QUERY_STOPWORDS = new Set([
   'what',
@@ -254,30 +276,39 @@ async function createTurnRecord(
     .do();
 }
 
-async function fetchTurnsWithinRange(userId: string, start: Date, end: Date) {
+async function fetchTurnsWithinRange(userId: string | null | undefined, start: Date, end: Date) {
   const client = await weaviateClientPromise;
   await ensureTurnSchema(client);
 
-  const where: Record<string, unknown> = {
-    operator: 'And',
-    operands: [
-      {
-        path: ['userId'],
-        operator: 'Equal',
-        valueString: userId,
-      },
-      {
-        path: ['createdAt'],
-        operator: 'GreaterThanEqual',
-        valueDate: start.toISOString(),
-      },
-      {
-        path: ['createdAt'],
-        operator: 'LessThan',
-        valueDate: end.toISOString(),
-      },
-    ],
-  } as const;
+  // Support global searches (no userId filtering) when userId is null/undefined
+  const operands: any[] = [
+    {
+      path: ['createdAt'],
+      operator: 'GreaterThanEqual',
+      valueDate: start.toISOString(),
+    },
+    {
+      path: ['createdAt'],
+      operator: 'LessThan',
+      valueDate: end.toISOString(),
+    },
+  ];
+  
+  // Only add userId filter if provided (allows global access across all users)
+  if (userId) {
+    operands.unshift({
+      path: ['userId'],
+      operator: 'Equal',
+      valueString: userId,
+    });
+  }
+  
+  const where: Record<string, unknown> = operands.length === 1
+    ? operands[0]
+    : {
+        operator: 'And',
+        operands,
+      } as const;
 
     const result = await client.graphql
       .get()
@@ -365,24 +396,33 @@ function extractPreferredName(profile?: Record<string, unknown>): string | undef
   return undefined;
 }
 
-async function fetchRecentEntries(userId: string, category: MemoryCategory, limit = 50) {
+async function fetchRecentEntries(userId: string | null | undefined, category: MemoryCategory, limit = 100) {
   try {
     const client = await weaviateClientPromise;
-    const where: Record<string, unknown> = {
-      operator: 'And',
-      operands: [
-        {
-          path: ['userId'],
-          operator: 'Equal',
-          valueString: userId,
-        },
-        {
-          path: ['category'],
-          operator: 'Equal',
-          valueString: category,
-        },
-      ],
-    } as const;
+    // Support global searches (no userId filtering) when userId is null/undefined
+    const operands: any[] = [
+      {
+        path: ['category'],
+        operator: 'Equal',
+        valueString: category,
+      },
+    ];
+    
+    // Only add userId filter if provided (allows global access)
+    if (userId) {
+      operands.unshift({
+        path: ['userId'],
+        operator: 'Equal',
+        valueString: userId,
+      });
+    }
+    
+    const where: Record<string, unknown> = operands.length === 1 
+      ? operands[0]
+      : {
+          operator: 'And',
+          operands,
+        } as const;
 
     const result = await client.graphql
       .get()
@@ -417,31 +457,40 @@ async function fetchRecentEntries(userId: string, category: MemoryCategory, limi
   }
 }
 
-async function fetchHighImportanceFacts(userId: string, limit = 20) {
+async function fetchHighImportanceFacts(userId: string | null | undefined, limit = 20) {
   try {
     const client = await weaviateClientPromise;
-    const where: Record<string, unknown> = {
-      operator: 'And',
-      operands: [
-        {
-          path: ['userId'],
-          operator: 'Equal',
-          valueString: userId,
-        },
-        {
-          path: ['category'],
-          operator: 'Equal',
-          valueString: 'facts',
-        },
-        {
-          operator: 'Or',
-          operands: [
-            { path: ['importance'], operator: 'Equal', valueString: 'high' },
-            { path: ['importance'], operator: 'Equal', valueString: 'medium' },
-          ],
-        },
-      ],
-    } as const;
+    // Support global searches (no userId filtering) when userId is null/undefined
+    const operands: any[] = [
+      {
+        path: ['category'],
+        operator: 'Equal',
+        valueString: 'facts',
+      },
+      {
+        operator: 'Or',
+        operands: [
+          { path: ['importance'], operator: 'Equal', valueString: 'high' },
+          { path: ['importance'], operator: 'Equal', valueString: 'medium' },
+        ],
+      },
+    ];
+    
+    // Only add userId filter if provided (allows global access)
+    if (userId) {
+      operands.unshift({
+        path: ['userId'],
+        operator: 'Equal',
+        valueString: userId,
+      });
+    }
+    
+    const where: Record<string, unknown> = operands.length === 1
+      ? operands[0]
+      : {
+          operator: 'And',
+          operands,
+        } as const;
 
     const result = await client.graphql
       .get()
@@ -478,7 +527,7 @@ async function fetchHighImportanceFacts(userId: string, limit = 20) {
   }
 }
 
-async function searchFactsByNameKeywords(userId: string, keywords: string[], limit = 10) {
+async function searchFactsByNameKeywords(userId: string | null | undefined, keywords: string[], limit = 10) {
   try {
     const client = await weaviateClientPromise;
     // Search for facts containing name-related keywords
@@ -487,10 +536,10 @@ async function searchFactsByNameKeywords(userId: string, keywords: string[], lim
       return [];
     }
 
-    // Use semantic search with name-related queries
+    // Use semantic search with name-related queries (global search when userId is null)
     const results = await Promise.all(
       nameQueries.map((keyword) =>
-        searchMemories(client, keyword, userId, {
+        searchMemories(client, keyword, userId || null, {
           limit: 5,
           category: 'facts',
           minImportance: 'medium', // Prioritize medium+ importance facts
@@ -661,6 +710,12 @@ app.post('/memory/:userId/store-candidate', async (req, res) => {
 
     const userId = req.params.userId;
     const now = new Date().toISOString();
+    console.info('[Memory Manager][store-candidate]', {
+      userId,
+      items: parsed.data.items.length,
+      categories: Array.from(new Set(parsed.data.items.map((i) => i.category))),
+      timestamp: now,
+    });
 
     await Promise.all(
       parsed.data.items.map(async (item) => {
@@ -709,6 +764,15 @@ app.post('/memory/:userId/turns', async (req, res) => {
       return;
     }
 
+    console.info('[Memory Manager][turn]', {
+      userId: req.params.userId,
+      sessionId: parsed.data.sessionId,
+      turnId: parsed.data.turnId,
+      role: parsed.data.role,
+      textPreview: parsed.data.text.slice(0, 80),
+      timestamp: new Date().toISOString(),
+    });
+
     await createTurnRecord(req.params.userId, {
       sessionId: parsed.data.sessionId,
       turnId: parsed.data.turnId,
@@ -723,6 +787,39 @@ app.post('/memory/:userId/turns', async (req, res) => {
       mode: parsed.data.mode ?? undefined,
       emotion: parsed.data.emotion ?? undefined,
     });
+
+    // Intelligent consolidation: Extract key facts from recent turns
+    // This runs asynchronously to not block the response
+    if (parsed.data.role === 'assistant') {
+      // Trigger consolidation after assistant turn (when conversation segment is complete)
+      const weaviateClient = await weaviateClientPromise;
+      
+      // Fetch recent turns globally (across all users and sessions for global memory access)
+      const endDate = new Date();
+      const startDate = new Date(endDate.getTime() - 7 * 24 * 60 * 60 * 1000); // Last 7 days
+      // Pass null to fetch turns from ALL users and sessions
+      const recentTurnsRaw = await fetchTurnsWithinRange(null, startDate, endDate);
+      const recentTurns = recentTurnsRaw
+        .map((turn) => ({
+          role: typeof turn.role === 'string' ? turn.role : '',
+          text: typeof turn.text === 'string' ? turn.text : '',
+          createdAt: typeof turn.createdAt === 'string' ? turn.createdAt : new Date().toISOString(),
+        }))
+        .filter((turn) => turn.role !== '' && turn.text !== '');
+      
+      // Consolidate in background (don't await to avoid blocking)
+      consolidateConversationTurns(weaviateClient, req.params.userId, recentTurns, { maxTurns: 20 })
+        .then((result) => {
+          if (result.consolidated > 0) {
+            console.log(
+              `[Memory Manager] Consolidated ${result.consolidated} memories (${result.facts} facts, ${result.goals} goals) for user ${req.params.userId}`,
+            );
+          }
+        })
+        .catch((error) => {
+          console.error('[Memory Manager] Consolidation error (non-blocking):', error);
+        });
+    }
 
     res.status(201).json({ stored: true });
   } catch (error) {
@@ -744,46 +841,88 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
 
     const query = parsed.data.query.trim();
     const userId = req.params.userId;
+    const startedAt = Date.now();
+    console.info('[Memory Manager][retrieve-for-dialogue:start]', {
+      userId,
+      query: query.slice(0, 120),
+      timestamp: new Date().toISOString(),
+    });
 
-  // Use Weaviate for semantic search if query is provided
-  // Otherwise fall back to most recent entries
+  // PRIMARY MEMORY ACCESS: prioritize the active user's memories, with optional global fallback
   let facts: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> = [];
   let goals: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> = [];
   let gratitude: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }> = [];
 
-  if (query.length > 0) {
-    // Semantic search using Weaviate - filter by category directly
-    const weaviateClient = await weaviateClientPromise;
-    const [factsResults, goalsResults, gratitudeResults] = await Promise.all([
-      searchMemories(weaviateClient, query, userId, { limit: 20, returnMetadata: true, category: 'facts' }),
-      searchMemories(weaviateClient, query, userId, { limit: 20, returnMetadata: true, category: 'goals' }),
-      searchMemories(weaviateClient, query, userId, { limit: 20, returnMetadata: true, category: 'gratitude' }),
-    ]);
+  // Always use semantic search for memory retrieval (prefer user-specific, fallback to global)
+  const weaviateClient = await weaviateClientPromise;
+  
+  // Use the provided query, or a general context query if empty
+  const searchQuery = query.length > 0 ? query : 'user context memories facts goals gratitude';
 
-    // Map to expected format
-    const mapResult = (result: typeof factsResults) =>
-      result.map((r) => ({
-        id: r.id,
-        text: r.properties.text,
-        category: r.properties.category,
-        importance: r.properties.importance,
-        metadata: r.properties.metadata,
-        createdAt: r.properties.createdAt,
-      }));
+  /**
+   * Retrieve semantically relevant memories for a category, preferring the active user.
+   * Falls back to global memories if we still need more context (deduped by ID).
+   */
+  const retrieveMemoriesForCategory = async (category: MemoryCategory, limit: number) => {
+    const baseOptions = { limit, returnMetadata: true, category } as const;
+    const primaryResults = await searchMemories(weaviateClient, searchQuery, userId, baseOptions);
 
-    facts = mapResult(factsResults);
-    goals = mapResult(goalsResults);
-    gratitude = mapResult(gratitudeResults);
+    const mappedPrimary = primaryResults.map((r) => ({
+      id: r.id,
+      text: r.properties.text,
+      category: r.properties.category,
+      importance: r.properties.importance,
+      metadata: r.properties.metadata,
+      createdAt: r.properties.createdAt,
+    }));
 
-    // Enhanced fallback: prioritize high-importance facts and name-related facts
-    if (!facts.length) {
+    if (mappedPrimary.length >= limit) {
+      return mappedPrimary.slice(0, limit);
+    }
+
+    // Fetch global memories only if we still need more signal
+    const globalResults = await searchMemories(weaviateClient, searchQuery, null, {
+      ...baseOptions,
+      limit: limit * 2,
+    });
+    const seen = new Set(mappedPrimary.map((item) => item.id));
+    for (const result of globalResults) {
+      if (seen.has(result.id)) continue;
+      mappedPrimary.push({
+        id: result.id,
+        text: result.properties.text,
+        category: result.properties.category,
+        importance: result.properties.importance,
+        metadata: result.properties.metadata,
+        createdAt: result.properties.createdAt,
+      });
+      seen.add(result.id);
+      if (mappedPrimary.length >= limit) break;
+    }
+
+    return mappedPrimary.slice(0, limit);
+  };
+
+  const [factsResults, goalsResults, gratitudeResults] = await Promise.all([
+    retrieveMemoriesForCategory('facts', 20),
+    retrieveMemoriesForCategory('goals', 20),
+    retrieveMemoriesForCategory('gratitude', 20),
+  ]);
+
+    facts = factsResults;
+    goals = goalsResults;
+    gratitude = gratitudeResults;
+
+    // Enhanced fallback: if semantic search returns few results, supplement with high-importance and recent entries
+    // First prefer current user's data; fall back to global if still insufficient
+    if (facts.length < 10) {
       const [highImportanceFacts, recentFacts] = await Promise.all([
         fetchHighImportanceFacts(userId, 10),
-        fetchRecentEntries(userId, 'facts', 20),
+        fetchRecentEntries(userId, 'facts', 50),
       ]);
       
-      // Combine and deduplicate
-      const allFacts = [...highImportanceFacts, ...recentFacts];
+      // Combine semantic results with fallback, deduplicate by ID
+      const allFacts = [...facts, ...highImportanceFacts, ...recentFacts];
       const seen = new Set<string>();
       facts = allFacts.filter((fact) => {
         if (seen.has(fact.id)) return false;
@@ -792,33 +931,17 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
       }).slice(0, 20);
     }
     
-    if (!goals.length) {
-      goals = await fetchRecentEntries(userId, 'goals');
+    if (goals.length < 5) {
+      const recentGoals = await fetchRecentEntries(userId, 'goals', 10);
+      const seen = new Set(goals.map((g) => g.id));
+      goals = [...goals, ...recentGoals.filter((g) => !seen.has(g.id))].slice(0, 10);
     }
-    if (!gratitude.length) {
-      gratitude = await fetchRecentEntries(userId, 'gratitude');
+    
+    if (gratitude.length < 5) {
+      const recentGratitude = await fetchRecentEntries(userId, 'gratitude', 10);
+      const seen = new Set(gratitude.map((g) => g.id));
+      gratitude = [...gratitude, ...recentGratitude.filter((g) => !seen.has(g.id))].slice(0, 10);
     }
-  } else {
-    // When no query, fetch high-importance facts first, then recent ones
-    const [highImportanceFacts, recentFacts, goalsResults, gratitudeResults] = await Promise.all([
-      fetchHighImportanceFacts(userId, 10),
-      fetchRecentEntries(userId, 'facts', 20),
-      fetchRecentEntries(userId, 'goals'),
-      fetchRecentEntries(userId, 'gratitude'),
-    ]);
-    
-    // Combine high-importance and recent facts, deduplicate
-    const allFacts = [...highImportanceFacts, ...recentFacts];
-    const seen = new Set<string>();
-    facts = allFacts.filter((fact) => {
-      if (seen.has(fact.id)) return false;
-      seen.add(fact.id);
-      return true;
-    }).slice(0, 20);
-    
-    goals = goalsResults;
-    gratitude = gratitudeResults;
-  }
 
   const rawFacts = [...facts];
   const rawGoals = [...goals];
@@ -831,11 +954,12 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
     loadPlaybook(userId),
   ]);
 
-  // Additional: Try to find name-related facts from profile
+  // Additional: Try to find name-related facts from profile (using global search)
   const preferredName = extractPreferredName(profile);
   if (preferredName && facts.length < 10) {
     const nameKeywords = [preferredName.toLowerCase()];
     // Also try common name variations if metadata has derivedKey
+    // Prioritize this user's name facts, fall back to global (handled in helper)
     const nameFacts = await searchFactsByNameKeywords(userId, nameKeywords, 5);
     // Merge name facts, prioritizing those not already in facts
     const existingIds = new Set(facts.map((f) => f.id));
@@ -872,21 +996,47 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
     .filter((token) => token.length >= 3);
   const tokensForFiltering = normalizedTokens.filter((token) => !QUERY_STOPWORDS.has(token));
 
+  const isNameFact = (item: { text: string; metadata: unknown; importance: string }) => {
+    const meta = (item.metadata && typeof item.metadata === 'object') ? (item.metadata as Record<string, unknown>) : null;
+    const derivedKey = typeof meta?.derivedKey === 'string' ? meta.derivedKey : undefined;
+    if (derivedKey?.startsWith('profile:name:')) {
+      return true;
+    }
+    const lowered = item.text.toLowerCase();
+    return /\b(my name is|i am called|мене звати)\b/.test(lowered);
+  };
+
+  const isEssentialFact = (item: { text: string; metadata: unknown; importance: string }) =>
+    item.importance === 'high' || isNameFact(item);
+
   const filterByQuery = (
     items: Array<{ id: string; text: string; category: string; importance: string; metadata: unknown; createdAt: string }>,
     limit = 5,
   ) => {
-    if (!tokensForFiltering.length) {
-      return items.slice(0, limit);
-    }
+    const essential = items.filter(isEssentialFact);
+    const essentialIds = new Set(essential.map((item) => item.id));
 
-    const matches = items.filter((item) => {
-      const text = item.text.toLowerCase();
-      return tokensForFiltering.some((token) => text.includes(token));
+    const remaining = items.filter((item) => !essentialIds.has(item.id));
+
+    const matches = tokensForFiltering.length
+      ? remaining.filter((item) => {
+          const text = item.text.toLowerCase();
+          return tokensForFiltering.some((token) => text.includes(token));
+        })
+      : remaining;
+
+    const prioritized = matches.length > 0 ? matches : remaining;
+    const combined = [...essential, ...prioritized];
+
+    const seen = new Set<string>();
+    const unique = combined.filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
     });
 
-    const prioritized = matches.length > 0 ? matches : items;
-    return prioritized.slice(0, limit);
+    const effectiveLimit = Math.max(limit, essential.length);
+    return unique.slice(0, effectiveLimit);
   };
 
   res.json({
@@ -904,6 +1054,14 @@ app.post('/memory/:userId/retrieve-for-dialogue', async (req, res) => {
     lastEmotion: lastConversation?.lastEmotion ?? null,
     playbookVersion: playbook?.metadata.version ?? null, // Include playbook version for tracking
   });
+    console.info('[Memory Manager][retrieve-for-dialogue:done]', {
+      userId,
+      facts: filteredFacts.length,
+      goals: filteredGoals.length,
+      gratitude: filteredGratitude.length,
+      durationMs: Date.now() - startedAt,
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
     console.error('[Memory Manager] Error retrieving dialogue context:', error);
     res.status(500).json({ error: 'Failed to retrieve dialogue context', message: error instanceof Error ? error.message : String(error) });

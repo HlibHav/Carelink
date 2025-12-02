@@ -7,8 +7,10 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 
 import { getEventsSince, recordEvent } from './lib/persistentTopics.js';
+import { initPhoenixOtel } from './phoenixOtel.js';
 
 dotenv.config();
+initPhoenixOtel('event-bus');
 
 const port = Number(process.env.PORT ?? 4300);
 const app = express();

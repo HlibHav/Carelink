@@ -25,8 +25,8 @@ const resolvedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? 'UT
 
 const defaultAuth: AuthConfig = {
   token: 'demo-token',
-  userId: 'user_demo',
-  deviceId: 'device_web',
+  userId: 'test-user',
+  deviceId: 'device_test_user',
   clientVersion: 'web-0.1',
 };
 
@@ -179,7 +179,8 @@ function App() {
     (() => {
       const normalized =
         window.location.pathname.replace(/\/index\.html$/, '').replace(/\/+$/, '') || '/';
-      return normalized === '/convai';
+      // Show orb view at root (/) or /convai route
+      return normalized === '/' || normalized === '/convai';
     })();
   if (showVoiceOrb) {
     return <VoiceOrbView auth={auth} />;

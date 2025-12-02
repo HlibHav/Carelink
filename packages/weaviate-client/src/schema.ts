@@ -154,6 +154,8 @@ function isNotFoundError(error: unknown): boolean {
  * Create or update the Memory collection schema in Weaviate
  */
 export async function createMemorySchema(client: WeaviateClient): Promise<void> {
+  const allowSchemaRecreate = process.env.WEAVIATE_ALLOW_SCHEMA_RECREATE === 'true';
+
   try {
     const existingSchema = await client.schema.classGetter().withClassName('Memory').do();
     if (isMemorySchemaUpToDate(existingSchema)) {
@@ -161,7 +163,14 @@ export async function createMemorySchema(client: WeaviateClient): Promise<void> 
       return;
     }
 
-    console.warn('⚠️ Memory schema is outdated, recreating...');
+    if (!allowSchemaRecreate) {
+      console.warn(
+        '⚠️ Memory schema appears outdated but WEAVIATE_ALLOW_SCHEMA_RECREATE is not true; skipping destructive recreate to avoid data loss.',
+      );
+      return;
+    }
+
+    console.warn('⚠️ Memory schema is outdated, recreating (destructive) ...');
     await client.schema.classDeleter().withClassName('Memory').do();
   } catch (error) {
     if (!isNotFoundError(error)) {

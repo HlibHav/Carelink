@@ -3,13 +3,34 @@ import express from 'express';
 import { randomInt } from 'node:crypto';
 
 import dotenv from 'dotenv';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+
+import { initPhoenixOtel } from './phoenixOtel.js';
 
 dotenv.config();
+initPhoenixOtel('mind-behavior-engine');
 
 const port = Number(process.env.PORT ?? 4102);
+const defaultUserId = (process.env.DEFAULT_USER_ID ?? 'test-user').trim();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const tracer = trace.getTracer('mind-behavior-engine');
+app.use((req, res, next) => {
+  const span = tracer.startSpan(`HTTP ${req.method} ${req.path}`);
+  span.setAttribute('http.method', req.method);
+  span.setAttribute('http.route', req.path);
+  span.setAttribute('service.name', 'mind-behavior-engine');
+  res.on('finish', () => {
+    span.setAttribute('http.status_code', res.statusCode);
+    if (res.statusCode >= 500) {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    }
+    span.end();
+  });
+  next();
+});
 
 type Domain = 'emotional' | 'cognitive' | 'social' | 'self_care';
 
@@ -156,7 +177,7 @@ app.get('/alerts/stream', (req, res) => {
     const domains = Object.keys(domainConfig) as Domain[];
     const event = {
       event_id: `evt_mb_${randomInt(10_000)}`,
-      user_id: `demo_${randomInt(100)}`,
+      user_id: defaultUserId,
       domain: domains[randomInt(domains.length)],
       severity: ['info', 'warning', 'critical'][randomInt(3)],
       observed_at: new Date().toISOString(),

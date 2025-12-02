@@ -6,6 +6,7 @@ import { getPhysicalStateSummary } from '../clients/physicalEngineClient.js';
 import { retrieveDialogueContext, saveConversationTurn, storeFacts } from '../clients/memoryManagerClient.js';
 import type { MemoryEntry } from '../clients/memoryManagerClient.js';
 import { dequeueSafetyCommand } from '../queue/safetyCommandQueue.js';
+import { captureSpan, logSpan } from '../services/phoenixClient.js';
 
 import { generateCoachReply } from './coachAgent.js';
 import { buildResponseGuidance, extractPreferredName } from './guidanceBuilder.js';
@@ -14,6 +15,9 @@ import { runListenerAgent } from './listenerAgent.js';
 import { planNextTurn } from './plannerAgent.js';
 import { determineTone } from './toneAgent.js';
 const derivedFactCache = new Map<string, Set<string>>();
+const physicalCache = new Map<string, { data: Awaited<ReturnType<typeof getPhysicalStateSummary>>; fetchedAt: number }>();
+const mindCache = new Map<string, { data: Awaited<ReturnType<typeof getMindBehaviorState>>; fetchedAt: number }>();
+const CACHE_TTL_MS = 20 * 60 * 1000;
 
 import type {
   ConversationContext,
@@ -65,7 +69,7 @@ async function ensureDerivedFacts(userId: string, context: ConversationContext):
     if (!hasDerivedFact(userId, key, context.facts)) {
       additions.push({
         key,
-        text: `Самопочуття: ${context.physicalState.summary}`,
+        text: `Well-being: ${context.physicalState.summary}`,
         importance: 'low',
         metadata: {
           derivedKey: key,
@@ -84,7 +88,7 @@ async function ensureDerivedFacts(userId: string, context: ConversationContext):
     if (!hasDerivedFact(userId, key, context.facts)) {
       additions.push({
         key,
-        text: `${notableVital.label}: ${notableVital.value}${notableVital.unit} (${notableVital.risk} ризик).`,
+        text: `${notableVital.label}: ${notableVital.value}${notableVital.unit} (${notableVital.risk} risk).`,
         importance: 'low',
         metadata: {
           derivedKey: key,
@@ -125,24 +129,70 @@ async function ensureDerivedFacts(userId: string, context: ConversationContext):
   });
 }
 
+/**
+ * Build conversation context with preloaded long-term memory.
+ * Always uses semantic search via embeddings to access memories from any past session.
+ * Memory is automatically retrieved before every turn for cross-session continuity.
+ */
 async function buildConversationContext(userId: string, transcript: string): Promise<ConversationContext> {
+  // Preload memory using semantic search - always pass the transcript as query
+  // This ensures automatic memory retrieval before every turn, accessing all past conversations
+  // regardless of session ID (cross-session long-term memory)
+  const memoryQuery = transcript.trim().length > 0 ? transcript : 'user context and memories';
+  
+  const now = Date.now();
   const [memory, physical, mindBehavior] = await Promise.all([
-    retrieveDialogueContext(userId, transcript),
-    getPhysicalStateSummary(userId).catch((error) => {
-      console.error('Physical engine unavailable', error);
-      return undefined;
-    }),
-    getMindBehaviorState(userId).catch((error) => {
-      console.error('Mind & Behavior engine unavailable', error);
-      return undefined;
-    }),
+    retrieveDialogueContext(userId, memoryQuery), // Always use semantic search
+    (async () => {
+      const cached = physicalCache.get(userId);
+      if (cached && now - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+      const fresh = await getPhysicalStateSummary(userId).catch((error) => {
+        console.error('Physical engine unavailable', error);
+        return undefined;
+      });
+      if (fresh) physicalCache.set(userId, { data: fresh, fetchedAt: now });
+      return fresh;
+    })(),
+    (async () => {
+      const cached = mindCache.get(userId);
+      if (cached && now - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+      const fresh = await getMindBehaviorState(userId).catch((error) => {
+        console.error('Mind & Behavior engine unavailable', error);
+        return undefined;
+      });
+      if (fresh) mindCache.set(userId, { data: fresh, fetchedAt: now });
+      return fresh;
+    })(),
   ]);
+
+  // Helpers to trim payload size for faster LLM latency
+  const dedupeByText = (items: MemoryEntry[] = []) => {
+    const seen = new Set<string>();
+    const result: MemoryEntry[] = [];
+    for (const item of items) {
+      const txt = (item.text ?? '').trim();
+      if (!txt || seen.has(txt.toLowerCase())) continue;
+      seen.add(txt.toLowerCase());
+      result.push(item);
+    }
+    return result;
+  };
+
+  const sortByImportance = (items: MemoryEntry[] = []) =>
+    [...items].sort((a, b) => {
+      const score = (val?: string) => (val === 'high' ? 2 : val === 'medium' ? 1 : 0);
+      return score(b.importance as string) - score(a.importance as string);
+    });
+
+  const topGoals = sortByImportance(dedupeByText(memory.goals ?? [])).slice(0, 3);
+  const topFacts = dedupeByText(memory.facts ?? []).slice(0, 10);
+  const topGratitude = dedupeByText(memory.gratitude ?? []).slice(0, 3);
 
   return {
     profile: memory.profile ?? undefined,
-    facts: memory.facts ?? [],
-    goals: memory.goals ?? [],
-    gratitude: memory.gratitude ?? [],
+    facts: topFacts,
+    goals: topGoals,
+    gratitude: topGratitude,
     lastMode: memory.lastMode ?? null,
     lastEmotion: (memory.lastEmotion as EmotionState | null) ?? null,
     physicalState: physical,
@@ -167,20 +217,117 @@ function shouldTriggerSafety(context: ConversationContext, emotion: EmotionState
 
 export async function runDialogueTurn(input: DialogueAgentInput): Promise<DialogueAgentResult> {
   const turnId = `turn_${randomUUID()}`;
-  const context = await buildConversationContext(input.userId, input.transcript);
-  await ensureDerivedFacts(input.userId, context);
-  const listener = await runListenerAgent(input.transcript);
-  const emotion = await refineEmotionState(listener, context.profile);
-  const initialPlan = await planNextTurn({ emotion, context });
+  const traceId = `${input.sessionId}:${turnId}`;
+  const baseMetadata = { userId: input.userId, sessionId: input.sessionId, turnId };
+  const turnSpanId = randomUUID();
+  const turnStartTime = new Date().toISOString();
+
+  const { result: context } = await captureSpan(
+    'context.build',
+    {
+      traceId,
+      parentSpanId: turnSpanId,
+      input: { transcript: input.transcript },
+      metadata: baseMetadata,
+    },
+    () => buildConversationContext(input.userId, input.transcript),
+  );
+
+  const fastPathReminder = context.lastMode === 'reminder' || input.transcript.trim().length < 80;
+
+  const [_, listenerSpan] = await Promise.all([
+    captureSpan(
+      'context.ensure_derived_facts',
+      {
+        traceId,
+        parentSpanId: turnSpanId,
+        input: { profile: context.profile, physicalState: context.physicalState },
+        metadata: baseMetadata,
+      },
+      () => ensureDerivedFacts(input.userId, context),
+    ),
+    captureSpan(
+      'listener.agent',
+      {
+        traceId,
+        parentSpanId: turnSpanId,
+        input: { transcript: input.transcript },
+        metadata: baseMetadata,
+      },
+      () => runListenerAgent(input.transcript),
+    ),
+  ]);
+  const listener = listenerSpan.result;
+
+  let emotion = listener.emotion as EmotionState;
+  let plan: ModePlan;
+
+  if (fastPathReminder) {
+    emotion = {
+      primary: 'neutral',
+      intensity: 'low',
+      energy: 'medium',
+      socialNeed: 'unknown',
+    };
+    plan = { mode: 'reminder', goal: 'check_in_on_goal', coach_intensity: 'low' } as ModePlan;
+  } else {
+    const { result: refinedEmotion } = await captureSpan(
+      'emotion.refine',
+      {
+        traceId,
+        parentSpanId: turnSpanId,
+        input: { listener, profile: context.profile },
+        metadata: baseMetadata,
+      },
+      () => refineEmotionState(listener, context.profile),
+    );
+    emotion = refinedEmotion;
+
+    const { result: initialPlan } = await captureSpan(
+      'planner.agent',
+      {
+        traceId,
+        parentSpanId: turnSpanId,
+        input: { emotion, lastMode: context.lastMode, lastEmotion: context.lastEmotion },
+        metadata: baseMetadata,
+      },
+      () => planNextTurn({ emotion, context }),
+    );
+    plan = initialPlan;
+  }
+
   const guidance = buildResponseGuidance({ context, listener, emotion });
-  const plan = adjustPlanWithGuidance(initialPlan, guidance);
-  const coach = await generateCoachReply({
-    listener,
-    emotion,
-    plan,
-    context,
-    directives: guidance,
+  plan = adjustPlanWithGuidance(plan, guidance);
+
+  await logSpan({
+    traceId,
+    spanId: randomUUID(),
+    parentSpanId: turnSpanId,
+    name: 'response.guidance',
+    startTime: new Date().toISOString(),
+    endTime: new Date().toISOString(),
+    input: { listener, emotion, contextSummary: { lastMode: context.lastMode } },
+    output: guidance,
+    metadata: baseMetadata,
   });
+
+  const { result: coach } = await captureSpan(
+    'coach.reply',
+    {
+      traceId,
+      parentSpanId: turnSpanId,
+      input: { plan, directives: guidance },
+      metadata: baseMetadata,
+    },
+    () =>
+      generateCoachReply({
+        listener,
+        emotion,
+        plan,
+        context,
+        directives: guidance,
+      }),
+  );
   const pendingSafetyCommand = dequeueSafetyCommand(input.userId);
   if (pendingSafetyCommand) {
     coach.text = pendingSafetyCommand.prompt;
@@ -192,7 +339,22 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
       handled_at: new Date().toISOString(),
     });
   }
-  const tone = pendingSafetyCommand ? 'serious_direct' : determineTone(emotion, plan);
+  const toneStart = new Date().toISOString();
+  const tone =
+    pendingSafetyCommand || plan.mode === 'coach'
+      ? determineTone(emotion, plan)
+      : 'conversational';
+  await logSpan({
+    traceId,
+    spanId: randomUUID(),
+    parentSpanId: turnSpanId,
+    name: 'tone.select',
+    startTime: toneStart,
+    endTime: new Date().toISOString(),
+    input: { emotion, plan, safetyOverride: Boolean(pendingSafetyCommand) },
+    output: { tone },
+    metadata: baseMetadata,
+  });
 
   await saveConversationTurn(input.userId, {
     sessionId: input.sessionId,
@@ -254,6 +416,21 @@ export async function runDialogueTurn(input: DialogueAgentInput): Promise<Dialog
       mind_behavior_summary: context.mindBehaviorState?.summary,
     });
   }
+
+  await logSpan({
+    traceId,
+    spanId: turnSpanId,
+    name: 'dialogue.turn',
+    startTime: turnStartTime,
+    endTime: new Date().toISOString(),
+    input: { transcript: input.transcript, metadata: input.metadata },
+    output: {
+      plan,
+      tone,
+      safetyCommandHandled: Boolean(pendingSafetyCommand),
+    },
+    metadata: baseMetadata,
+  });
 
   return {
     turnId,

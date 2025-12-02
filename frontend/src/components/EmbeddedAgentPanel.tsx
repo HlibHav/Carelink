@@ -45,7 +45,7 @@ const env = import.meta.env;
 const envAgentId = (env.VITE_ELEVENLABS_AGENT_ID ?? '').trim();
 const envSignedUrl = (env.VITE_ELEVENLABS_SIGNED_URL ?? '').trim();
 const envConversationToken = (env.VITE_ELEVENLABS_CONVERSATION_TOKEN ?? '').trim();
-const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? env.DIALOGUE_DEFAULT_USER_ID ?? 'demo-user').trim();
+const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? env.DIALOGUE_DEFAULT_USER_ID ?? 'test-user').trim();
 const envConnectionType = (env.VITE_ELEVENLABS_CONNECTION_TYPE ?? '').trim();
 const envServerLocation = (env.VITE_ELEVENLABS_SERVER_LOCATION ?? '').trim();
 const envAutoConnectPreference = (env.VITE_ELEVENLABS_AUTO_CONNECT ?? '').trim().toLowerCase();
@@ -59,7 +59,6 @@ const debugLog = (...args: unknown[]) => {
   if (!shouldDebugLogs) {
     return;
   }
-  // eslint-disable-next-line no-console
   console.debug('[EmbeddedAgentPanel]', ...args);
 };
 
@@ -185,58 +184,74 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
   }, [auth]);
 
   const handleIncomingEvent = useCallback(
-    (event: any) => {
+    (event: unknown) => {
       if (!event || typeof event !== 'object') {
         return;
       }
+      const typedEvent = event as Record<string, unknown>;
       if (shouldDebugLogs) {
-        debugLog('Incoming event', { type: event.type });
+        debugLog('Incoming event', { type: typedEvent.type });
       }
-      switch (event.type) {
+      switch (typedEvent.type) {
         case 'agent_response':
           appendMessage({
             role: 'agent',
-            text: event.agent_response_event?.agent_response ?? '',
+            text:
+              (typedEvent.agent_response_event as { agent_response?: string } | undefined)?.agent_response ?? '',
           });
           break;
         case 'agent_chat_response_part':
           appendMessage({
             role: 'agent',
-            text: event.text_response_part?.text ?? '',
-            meta: event.text_response_part?.type === 'delta' ? 'streaming' : undefined,
+            text: (typedEvent.text_response_part as { text?: string } | undefined)?.text ?? '',
+            meta:
+              (typedEvent.text_response_part as { type?: string } | undefined)?.type === 'delta'
+                ? 'streaming'
+                : undefined,
           });
           break;
         case 'user_transcript':
           appendMessage({
             role: 'user',
-            text: event.user_transcription_event?.user_transcript ?? '',
+            text:
+              (typedEvent.user_transcription_event as { user_transcript?: string } | undefined)?.user_transcript ??
+              '',
           });
           break;
         case 'tentative_user_transcript':
           appendMessage({
             role: 'user',
-            text: event.tentative_user_transcription_event?.user_transcript ?? '',
+            text:
+              (typedEvent.tentative_user_transcription_event as { user_transcript?: string } | undefined)
+                ?.user_transcript ?? '',
             meta: 'tentative',
           });
           break;
         case 'client_tool_call':
           appendMessage({
             role: 'system',
-            text: `Client tool requested: ${event.client_tool_call?.tool_name ?? 'unknown tool'}`,
+            text: `Client tool requested: ${
+              (typedEvent.client_tool_call as { tool_name?: string } | undefined)?.tool_name ?? 'unknown tool'
+            }`,
             meta: 'tool',
           });
           break;
         case 'mcp_tool_call':
           appendMessage({
             role: 'system',
-            text: `MCP tool requested: ${event.mcp_tool_call?.tool_name ?? 'unknown tool'}`,
+            text: `MCP tool requested: ${
+              (typedEvent.mcp_tool_call as { tool_name?: string } | undefined)?.tool_name ?? 'unknown tool'
+            }`,
             meta: 'tool',
           });
           break;
         case 'conversation_initiation_metadata':
           appendMessage({
             role: 'system',
-            text: `Conversation ready (${event.conversation_initiation_metadata_event?.conversation_id ?? 'unknown'})`,
+            text: `Conversation ready (${
+              (typedEvent.conversation_initiation_metadata_event as { conversation_id?: string } | undefined)
+                ?.conversation_id ?? 'unknown'
+            })`,
           });
           break;
         default:
@@ -346,12 +361,12 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
       const conversation = await Conversation.startSession({
         ...sessionConfig,
         clientTools: dialogueClientTools?.clientTools,
-        onStatusChange: (next: any) => {
+        onStatusChange: (next: unknown) => {
           const value =
             typeof next === 'string'
               ? next
-              : typeof next?.status === 'string'
-                ? next.status
+              : next && typeof (next as { status?: string }).status === 'string'
+                ? (next as { status?: string }).status
                 : undefined;
           setConnectionStatus(
             value === 'connected'
@@ -361,17 +376,22 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
                 : 'disconnected',
           );
         },
-        onModeChange: (mode: any) => {
+        onModeChange: (mode: unknown) => {
           const resolved =
             typeof mode === 'string'
               ? mode
-              : typeof mode?.mode === 'string'
-                ? mode.mode
+              : mode && typeof (mode as { mode?: string }).mode === 'string'
+                ? (mode as { mode?: string }).mode
                 : 'listening';
           setIsSpeaking(resolved === 'speaking');
         },
-        onCanSendFeedbackChange: (payload: any) =>
-          setCanSendFeedback(Boolean(payload?.canSendFeedback ?? payload)),
+        onCanSendFeedbackChange: (payload: unknown) => {
+          const canSend =
+            typeof payload === 'object' && payload !== null
+              ? (payload as { canSendFeedback?: unknown }).canSendFeedback
+              : payload;
+          setCanSendFeedback(Boolean(canSend));
+        },
         onError: (error: unknown) =>
           setWidgetError(
             typeof error === 'string'
@@ -405,6 +425,9 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
     handleRequestMic,
     isConnecting,
     micReady,
+    connectionType,
+    signedUrl,
+    conversationToken,
     textOnly,
   ]);
 
@@ -544,7 +567,7 @@ export function EmbeddedAgentPanel({ auth }: EmbeddedAgentPanelProps) {
           <input
             value={userId}
             onChange={(event) => setUserId(event.target.value)}
-            placeholder="user_demo"
+            placeholder="test-user"
             className="mt-1 w-full rounded-2xl border border-midnight-100 bg-white px-3 py-2 text-sm text-midnight-900 focus:border-midnight-400 focus:outline-none focus:ring-2 focus:ring-midnight-200"
           />
         </label>

@@ -1,10 +1,14 @@
 import cors from 'cors';
 import express from 'express';
 import EventSource from 'eventsource';
+import { context, trace, SpanStatusCode } from '@opentelemetry/api';
 import { z } from 'zod';
 
 import { config } from './config.js';
 import { handleCoachTrigger } from './orchestrator/coachAgent.js';
+import { initPhoenixOtel } from './phoenixOtel.js';
+
+initPhoenixOtel('coach-agent');
 
 const app = express();
 app.use(cors());
@@ -26,27 +30,41 @@ function connectToEventBus() {
   console.log('[CoachAgent] Subscribed to coach.trigger.v1');
 
   source.onmessage = async (message: SSEMessage) => {
-    if (!message.data) {
-      return;
-    }
-    try {
-      const payload = JSON.parse(message.data);
-      const parsed = coachEventSchema.safeParse(payload.payload ?? payload);
-      if (!parsed.success) {
-        console.warn('[CoachAgent] Received invalid payload', payload);
-        return;
-      }
+  if (!message.data) {
+    return;
+  }
+  try {
+      const tracer = trace.getTracer('coach-agent');
+      const span = tracer.startSpan('coach.trigger');
+      await context.with(trace.setSpan(context.active(), span), async () => {
+        const payload = JSON.parse(message.data);
+        const parsed = coachEventSchema.safeParse(payload.payload ?? payload);
+        if (!parsed.success) {
+          console.warn('[CoachAgent] Received invalid payload', payload);
+          span.setStatus({ code: SpanStatusCode.ERROR, message: 'invalid_payload' });
+          return;
+        }
 
-      await handleCoachTrigger({
-        userId: parsed.data.user_id,
-        turnId: parsed.data.turn_id,
-        requestedMode: parsed.data.requested_mode ?? undefined,
-        goal: parsed.data.goal ?? undefined,
-        reason: parsed.data.reason ?? undefined,
-        createdAt: parsed.data.created_at ?? undefined,
+        await handleCoachTrigger({
+          userId: parsed.data.user_id,
+          turnId: parsed.data.turn_id,
+          requestedMode: parsed.data.requested_mode ?? undefined,
+          goal: parsed.data.goal ?? undefined,
+          reason: parsed.data.reason ?? undefined,
+          createdAt: parsed.data.created_at ?? undefined,
+        });
+        span.setStatus({ code: SpanStatusCode.OK });
       });
     } catch (error) {
       console.error('[CoachAgent] Event processing error', error);
+      const active = trace.getActiveSpan();
+      if (active) {
+        active.recordException(error as Error);
+        active.setStatus({ code: SpanStatusCode.ERROR, message: 'event_processing_error' });
+      }
+    } finally {
+      const active = trace.getActiveSpan();
+      if (active) active.end();
     }
   };
 

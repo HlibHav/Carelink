@@ -1,7 +1,15 @@
 {
+  "scripts": {
+    "build:frontend": "cd frontend && npm run build",
+    "deploy:firebase": "npm run build:frontend && firebase deploy --only hosting",
+    "deploy:firebase:only": "firebase deploy --only hosting"
+  },
   "devDependencies": {
     "@carelink/weaviate-client": "file:./packages/weaviate-client",
     "@elevenlabs/elevenlabs-js": "^2.24.1",
     "dotenv": "^16.4.5"
+  },
+  "dependencies": {
+    "@arizeai/phoenix-otel": "^0.3.1"
   }
 }

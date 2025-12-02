@@ -1,0 +1,3 @@
+[console_scripts]
+arize-phoenix = phoenix.server.main:main
+phoenix = phoenix.server.main:main

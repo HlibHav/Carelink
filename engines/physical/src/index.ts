@@ -4,14 +4,35 @@ import type { Request } from 'express';
 import { randomInt } from 'node:crypto';
 
 import dotenv from 'dotenv';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+
+import { initPhoenixOtel } from './phoenixOtel.js';
 
 dotenv.config();
+initPhoenixOtel('physical-engine');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+const tracer = trace.getTracer('physical-engine');
+app.use((req, res, next) => {
+  const span = tracer.startSpan(`HTTP ${req.method} ${req.path}`);
+  span.setAttribute('http.method', req.method);
+  span.setAttribute('http.route', req.path);
+  span.setAttribute('service.name', 'physical-engine');
+  res.on('finish', () => {
+    span.setAttribute('http.status_code', res.statusCode);
+    if (res.statusCode >= 500) {
+      span.setStatus({ code: SpanStatusCode.ERROR });
+    }
+    span.end();
+  });
+  next();
+});
+
 const port = Number(process.env.PORT ?? 4101);
+const defaultUserId = (process.env.DEFAULT_USER_ID ?? 'test-user').trim();
 
 type MetricName = 'heart_rate' | 'hrv' | 'spo2' | 'respiration' | 'temperature' | 'steps' | 'sleep';
 
@@ -147,7 +168,7 @@ app.get('/alerts/stream', (req, res) => {
     const metricKeys = Object.keys(metricConfig) as MetricName[];
     const event = {
       event_id: `evt_${randomInt(10_000)}`,
-      user_id: `demo_${randomInt(100)}`,
+      user_id: defaultUserId,
       severity: severity[randomInt(severity.length)],
       source: metricKeys[randomInt(metricKeys.length)],
       observed_at: new Date().toISOString(),

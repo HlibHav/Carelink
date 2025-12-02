@@ -4,6 +4,33 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# Default Phoenix vars (overridable)
+: "${PHOENIX_ENDPOINT:=http://localhost:6006}"
+: "${PHOENIX_PROJECT_NAME:=Carelink}"
+export PHOENIX_ENDPOINT PHOENIX_PROJECT_NAME
+
+# Force OTEL exporters to target Phoenix HTTP collector.
+# Use base endpoint (no /v1/traces suffix) to avoid double-appending by OTEL SDKs.
+export OTEL_EXPORTER_OTLP_ENDPOINT="${PHOENIX_ENDPOINT%/}"
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="${PHOENIX_ENDPOINT%/}/v1/traces"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+export PHOENIX_ENDPOINT PHOENIX_PROJECT_NAME
+
+# Default: skip Weaviate migration to avoid re-importing legacy/demo data unless explicitly enabled
+: "${SKIP_WEAVIATE_MIGRATION:=1}"
+
+# Function to check if port is used by a Docker container
+is_docker_port() {
+  local port=$1
+  if docker info >/dev/null 2>&1; then
+    # Check if any Docker container is using this port
+    if docker ps --format "{{.Ports}}" 2>/dev/null | grep -q ":$port->"; then
+      return 0  # Port is used by Docker
+    fi
+  fi
+  return 1  # Port is not used by Docker
+}
+
 # Function to check if port is in use
 check_port() {
   local port=$1
@@ -33,22 +60,55 @@ fi
 # Check if Docker is running (only needed for local Weaviate)
 if [[ $USE_WEAVIATE_CLOUD -eq 0 ]]; then
   if ! docker info >/dev/null 2>&1; then
-    echo "❌ Docker is not running. Please start Docker and try again."
+    echo "❌ Docker is not running."
+    echo "   Please start Docker Desktop and wait for it to be ready, then try again."
     exit 1
   fi
 fi
 
 # Check for ports that might be in use
-PORTS_TO_CHECK=(4300 4101 4102 4103 4200 4201 4202 8080 5173)
+PORTS_TO_CHECK=(6006 4300 4101 4102 4103 4200 4201 4202 8080 5173 8082)
 OCCUPIED_PORTS=()
+DOCKER_PORTS=()
+
+# First, check if Docker is running and identify Docker-managed ports
+if docker info >/dev/null 2>&1; then
+  for port in "${PORTS_TO_CHECK[@]}"; do
+    if is_docker_port "$port"; then
+      DOCKER_PORTS+=($port)
+    fi
+  done
+fi
+
+# Check for occupied ports, excluding Docker-managed ones
 for port in "${PORTS_TO_CHECK[@]}"; do
   if check_port "$port"; then
-    OCCUPIED_PORTS+=($port)
+    # Skip if this port is managed by Docker
+    is_docker=0
+    for docker_port in "${DOCKER_PORTS[@]}"; do
+      if [ "$port" == "$docker_port" ]; then
+        is_docker=1
+        break
+      fi
+    done
+    if [ $is_docker -eq 0 ]; then
+      OCCUPIED_PORTS+=($port)
+    fi
   fi
 done
 
+# Show Docker-managed ports as info
+if [ ${#DOCKER_PORTS[@]} -gt 0 ]; then
+  echo "ℹ️  The following ports are managed by Docker containers (will be reused):"
+  for port in "${DOCKER_PORTS[@]}"; do
+    echo "   • Port $port (Docker container)"
+  done
+  echo ""
+fi
+
+# Handle non-Docker occupied ports
 if [ ${#OCCUPIED_PORTS[@]} -gt 0 ]; then
-  echo "⚠️  Warning: The following ports are already in use:"
+  echo "⚠️  Warning: The following ports are already in use (not Docker):"
   for port in "${OCCUPIED_PORTS[@]}"; do
     pids=$(lsof -ti:$port 2>/dev/null | tr '\n' ' ')
     echo "   • Port $port (PIDs: $pids)"
@@ -69,13 +129,22 @@ if [ ${#OCCUPIED_PORTS[@]} -gt 0 ]; then
 fi
 
 if [[ $USE_WEAVIATE_CLOUD -eq 0 ]]; then
+  # Re-check Docker before starting services (in case it stopped)
+  if ! docker info >/dev/null 2>&1; then
+    echo "❌ Docker is not running. Please start Docker Desktop and try again."
+    exit 1
+  fi
+  
   # Start Weaviate via Docker Compose
   echo "🚀 Starting Weaviate..."
   cd "$ROOT_DIR"
   if docker-compose -f docker-compose.weaviate.yml ps | grep -q "Up"; then
     echo "✅ Weaviate is already running"
   else
-    docker-compose -f docker-compose.weaviate.yml up -d
+    if ! docker-compose -f docker-compose.weaviate.yml up -d 2>&1; then
+      echo "❌ Failed to start Weaviate. Please check Docker is running and try again."
+      exit 1
+    fi
     echo "⏳ Waiting for Weaviate to be ready..."
     
     # Wait for Weaviate to be ready (max 30 seconds)
@@ -92,23 +161,6 @@ if [[ $USE_WEAVIATE_CLOUD -eq 0 ]]; then
     done
   fi
 
-  # Optionally migrate data from a cloud Weaviate into the local instance
-  # This uses scripts/migrate-weaviate.ts with SOURCE_* env vars pointing to cloud
-  if [ -f "$ROOT_DIR/scripts/migrate-weaviate.ts" ]; then
-    echo "📥 Running optional Weaviate migration from cloud (if SOURCE_* env vars are set)..."
-
-    # Ensure root dependencies for the migration script
-    if [ ! -d "$ROOT_DIR/node_modules" ]; then
-      echo "📦 Installing root dependencies for migration script..."
-      (cd "$ROOT_DIR" && npm install --silent)
-    fi
-
-    (
-      cd "$ROOT_DIR"
-      # Run migration; don't fail the whole stack if migration errors
-      npx tsx scripts/migrate-weaviate.ts || echo "⚠️ Weaviate migration failed or was skipped; continuing stack startup..."
-    )
-  fi
 else
   echo "☁️  Using WEAVIATE_URL=${WEAVIATE_URL}; skipping local Docker weaviate startup."
 fi
@@ -178,7 +230,7 @@ PIDS=()
 cleanup() {
   echo ""
   echo "🛑 Shutting down stack..."
-  
+
   # Stop Node.js services
   if ((${#PIDS[@]})); then
     for pid in "${PIDS[@]}"; do
@@ -202,6 +254,49 @@ ensure_dependencies() {
   if [ ! -d "$ROOT_DIR/$path/node_modules" ]; then
     echo "📦 Installing dependencies for $path..."
     (cd "$ROOT_DIR/$path" && npm install --silent)
+  fi
+}
+
+start_phoenix() {
+  local project_name="${PHOENIX_PROJECT_NAME:-Carelink}"
+  
+  # Check Docker is running
+  if ! docker info >/dev/null 2>&1; then
+    echo "⚠️  Docker is not running. Skipping Phoenix startup."
+    return 1
+  fi
+  
+  echo "🚀 Starting Phoenix (Arize) via Docker on port 6006..."
+  cd "$ROOT_DIR"
+  
+  # Export PHOENIX_PROJECT_NAME for docker-compose
+  export PHOENIX_PROJECT_NAME="$project_name"
+  
+  # Check if Phoenix container is already running
+  if docker-compose -f docker-compose.weaviate.yml ps phoenix 2>/dev/null | grep -q "Up"; then
+    echo "✅ Phoenix is already running"
+    return 0
+  else
+    # Start Phoenix via docker-compose
+    if ! docker-compose -f docker-compose.weaviate.yml up -d phoenix 2>&1; then
+      echo "⚠️  Failed to start Phoenix. Continuing without Phoenix..."
+      return 1
+    fi
+    
+    echo "⏳ Waiting for Phoenix to be ready..."
+    # Wait for Phoenix to be ready (max 30 seconds)
+    for i in {1..30}; do
+      if curl -s http://localhost:6006 >/dev/null 2>&1; then
+        echo "✅ Phoenix is ready"
+        return 0
+      fi
+      if [ $i -eq 30 ]; then
+        echo "⚠️  Phoenix did not become ready in time, but continuing..."
+        return 1
+      else
+        sleep 1
+      fi
+    done
   fi
 }
 
@@ -248,6 +343,9 @@ start_service() {
 echo ""
 echo "🚀 Starting services in phases..."
 echo ""
+
+# Phoenix (optional, will skip if venv missing)
+start_phoenix
 
 # Phase 1: Infrastructure
 for svc in "${SERVICES_PHASE1[@]}"; do
@@ -319,6 +417,7 @@ echo "   • Coach Agent: http://localhost:4201"
 echo "   • Safety Agent: http://localhost:4202"
 echo "   • Gateway: http://localhost:8080"
 echo "   • Frontend: http://localhost:5173"
+echo "   • Phoenix (Arize): http://localhost:6006"
 echo ""
 echo "🌐 Weaviate Console: https://console.semi.technology"
 echo "   (Connect to: http://localhost:8082)"

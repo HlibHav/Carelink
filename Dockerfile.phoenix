@@ -1,0 +1,24 @@
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Install build dependencies for sqlean-py
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Phoenix and dependencies
+RUN pip install --no-cache-dir arize-phoenix
+
+# Create Phoenix data directory with proper permissions
+RUN mkdir -p /phoenix-data && chmod 777 /phoenix-data
+
+# Expose Phoenix port
+EXPOSE 6006
+
+# Default command to run Phoenix server
+CMD ["python", "-m", "phoenix.server.main", "serve"]
+

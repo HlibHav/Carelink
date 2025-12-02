@@ -38,3 +38,12 @@ run-gateway: ## Start Gateway API (Port 8080)
 
 run-frontend: ## Start Frontend Playground (Port 5173)
 	@cd frontend && npm run dev
+
+build-frontend: ## Build frontend for production
+	@cd frontend && npm run build
+
+deploy-firebase: build-frontend ## Build and deploy frontend to Firebase Hosting
+	@firebase deploy --only hosting
+
+deploy-firebase-only: ## Deploy to Firebase Hosting without rebuilding
+	@firebase deploy --only hosting

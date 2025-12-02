@@ -218,3 +218,7 @@ If accessing from browser, ensure CORS is enabled in Weaviate config (already co
 }
 ```
 
+
+
+
+

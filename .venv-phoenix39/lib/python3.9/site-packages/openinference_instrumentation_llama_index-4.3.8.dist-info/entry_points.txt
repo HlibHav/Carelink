@@ -1,0 +1,5 @@
+[openinference_instrumentor]
+llama_index = openinference.instrumentation.llama_index:LlamaIndexInstrumentor
+
+[opentelemetry_instrumentor]
+llama_index = openinference.instrumentation.llama_index:LlamaIndexInstrumentor
