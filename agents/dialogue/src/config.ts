@@ -45,11 +45,15 @@ const allowedOrigins = (() => {
 })();
 
 const resolvedPort = Number(process.env.DIALOGUE_AGENT_PORT ?? 4200);
+const phoenixEndpoint = process.env.PHOENIX_ENDPOINT?.replace(/\/$/, '') ?? '';
 
 export const config = {
   env: process.env.NODE_ENV ?? 'development',
   port: resolvedPort,
   allowedOrigins,
+  observability: {
+    phoenixEndpoint,
+  },
   openai: {
     apiKey: process.env.OPENAI_API_KEY ?? '',
     organization: process.env.OPENAI_ORG ?? undefined,

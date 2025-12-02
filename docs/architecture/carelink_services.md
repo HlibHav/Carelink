@@ -53,6 +53,11 @@ They do not perform high-level reasoning or user-facing orchestration.
   - `daily_digest(...)`
   - `compress_short_to_long_term(...)`
 
+### 2.4 Data Lifecycle
+- LifeCompanion stores the user’s shared memories and conversation turns securely in the Memory Manager so it can personalize future support.
+- The Memory Manager keeps these insights inside CareLink’s trusted infrastructure, so dialogue, coach, and safety agents can reference real history without leaking data to other systems.
+- Users (or administrators) can request pruning or alternate blurbs via configuration, but the baseline posture always references the secure Memory Manager service.
+
 ---
 
 ## 3. System Infrastructure Services

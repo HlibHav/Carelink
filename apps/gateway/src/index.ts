@@ -1,3 +1,7 @@
+import { initPhoenixOtel } from './shared/phoenixOtel.js';
+
+initPhoenixOtel('gateway');
+
 import { app } from './app.js';
 import { config } from './config.js';
 

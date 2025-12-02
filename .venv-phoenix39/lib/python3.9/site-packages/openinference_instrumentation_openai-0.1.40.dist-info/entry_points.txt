@@ -1,0 +1,5 @@
+[openinference_instrumentor]
+openai = openinference.instrumentation.openai:OpenAIInstrumentor
+
+[opentelemetry_instrumentor]
+openai = openinference.instrumentation.openai:OpenAIInstrumentor

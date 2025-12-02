@@ -1,6 +1,18 @@
 import dotenv from 'dotenv';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
-dotenv.config();
+// Load .env from root or .env/.env to match other agents
+const envPathCandidates = [
+  resolve(process.cwd(), '.env/.env'),
+  resolve(process.cwd(), '.env'),
+];
+const envPath = envPathCandidates.find((p) => existsSync(p));
+if (envPath) {
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config();
+}
 
 export const config = {
   port: Number(process.env.PORT ?? 4202),

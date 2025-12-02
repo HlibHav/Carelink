@@ -74,6 +74,8 @@ export const createDialogueClientTools = (options: DialogueToolOptions) => {
 
     options.onBeforeCall?.(parameters);
 
+    const resolvedUserId = options.defaultUserId ?? 'test-user';
+
     const payload: ElevenLabsDialogueTurnRequest = {
       transcript,
       sessionId:
@@ -81,7 +83,7 @@ export const createDialogueClientTools = (options: DialogueToolOptions) => {
         resolveString(parameters.conversation_id) ??
         resolveString(parameters.sessionId) ??
         resolveString(parameters.conversationId),
-      userId: resolveString(parameters.user_id) ?? resolveString(parameters.userId) ?? options.defaultUserId,
+      userId: resolvedUserId,
       metadata: {
         elevenLabsToolCall: parameters,
         toolCallId,

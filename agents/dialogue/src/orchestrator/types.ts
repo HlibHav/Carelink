@@ -53,4 +53,5 @@ export interface ResponseGuidance {
   planningCues: string[];
   socialTopics: string[];
   personalizationNote?: string;
+  privacyAssurance?: string;
 }

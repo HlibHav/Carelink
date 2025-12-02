@@ -19,7 +19,7 @@ const envSignedUrl = (env.VITE_ELEVENLABS_SIGNED_URL ?? '').trim();
 const envConversationToken = (env.VITE_ELEVENLABS_CONVERSATION_TOKEN ?? '').trim();
 const envConnectionType = (env.VITE_ELEVENLABS_CONNECTION_TYPE ?? 'webrtc').trim();
 const envServerLocation = (env.VITE_ELEVENLABS_SERVER_LOCATION ?? 'us').trim();
-const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? env.DIALOGUE_DEFAULT_USER_ID ?? 'demo-user').trim();
+const envUserId = (env.VITE_ELEVENLABS_USER_ID ?? env.DIALOGUE_DEFAULT_USER_ID ?? 'test-user').trim();
 const envTextOnly = (env.VITE_ELEVENLABS_TEXT_ONLY ?? '').toLowerCase() === 'true';
 const envVolume = Number(env.VITE_ELEVENLABS_VOLUME ?? '0.85');
 const envAutoConnectPreference = (env.VITE_ELEVENLABS_AUTO_CONNECT ?? '').trim().toLowerCase();
@@ -90,7 +90,13 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
   );
 
   useEffect(() => {
-    if (!auth || envAgentId || envConversationToken || envSignedUrl) {
+    // Fetch a fresh conversation token only when using WebRTC and no token/signed URL is already supplied.
+    if (!auth || envSignedUrl || envConversationToken) {
+      return;
+    }
+
+    // Only fetch a token when we intend to use WebRTC.
+    if (resolveConnectionType() !== 'webrtc') {
       return;
     }
 
@@ -149,6 +155,8 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
     const trimmedAgent = agentId.trim();
     const trimmedSignedUrl = signedUrl.trim();
     const trimmedToken = conversationToken.trim();
+    const resolvedConnectionType = resolveConnectionType();
+
     const base = {
       origin: locationOrigins[envServerLocation],
       userId: envUserId || undefined,
@@ -163,7 +171,7 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
       };
     }
 
-    if (trimmedToken) {
+    if (trimmedToken && resolvedConnectionType === 'webrtc') {
       return {
         ...base,
         conversationToken: trimmedToken,
@@ -178,9 +186,10 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
     return {
       ...base,
       agentId: trimmedAgent,
-      connectionType: resolveConnectionType(),
+      // If websocket was requested, do NOT pass conversationToken to avoid forcing WebRTC.
+      connectionType: resolvedConnectionType,
     };
-  }, [agentId, conversationToken, envServerLocation, signedUrl]);
+  }, [agentId, conversationToken, signedUrl]);
 
   const handleConnect = useCallback(async () => {
     if (status === 'connecting' || status === 'connected') {
@@ -203,6 +212,13 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
         clientToolsKeys: dialogueClientTools?.clientTools ? Object.keys(dialogueClientTools.clientTools) : [],
         clientToolsObject: dialogueClientTools?.clientTools,
       });
+      if (!dialogueClientTools?.clientTools) {
+        console.warn('[VoiceOrbView] No client tools available for this session (expected carelink_dialogue_orchestrator).');
+      } else if (!Object.keys(dialogueClientTools.clientTools).includes('carelink_dialogue_orchestrator')) {
+        console.warn('[VoiceOrbView] carelink_dialogue_orchestrator is missing from client tools.', {
+          availableKeys: Object.keys(dialogueClientTools.clientTools),
+        });
+      }
       
       const conversation = await Conversation.startSession({
         ...sessionConfig,
@@ -210,6 +226,10 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
         onStatusChange: (value) => {
           const resolved =
             typeof value === 'string' ? value : typeof value?.status === 'string' ? value.status : undefined;
+          console.debug('[VoiceOrbView] Status change', {
+            raw: value,
+            resolved,
+          });
           if (resolved === 'connected') {
             setStatus('connected');
           } else if (resolved === 'connecting') {
@@ -224,6 +244,7 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
           setIsSpeaking(resolved === 'speaking');
         },
         onError: (err) => {
+          console.warn('[VoiceOrbView] onError', err);
           setError(
             typeof err === 'string'
               ? err
@@ -246,7 +267,7 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
     } finally {
       setAutoConnectAttempted(true);
     }
-  }, [buildSessionConfig, cleanUpConversation, dialogueClientTools, envVolume, handleRequestMic, status]);
+  }, [buildSessionConfig, cleanUpConversation, dialogueClientTools, handleRequestMic, status]);
 
   useEffect(() => {
     const hasConfig = Boolean(agentId.trim() || signedUrl.trim() || conversationToken.trim());
@@ -262,6 +283,7 @@ export function VoiceOrbView({ auth }: VoiceOrbViewProps) {
     shouldAutoConnect,
     signedUrl,
   ]);
+
 
   useEffect(() => {
     return () => {

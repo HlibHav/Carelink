@@ -107,7 +107,7 @@ elevenLabsAgentRouter.post(
       });
     }
 
-    const requestUserId = parsed.data.userId?.trim() || req.userId;
+    const requestUserId = (parsed.data.userId?.trim() || req.userId || process.env.ELEVENLABS_DEFAULT_USER_ID || 'test-user').trim();
     if (!requestUserId) {
       throw errors.badRequest('userId is required via body or headers');
     }
@@ -117,14 +117,38 @@ elevenLabsAgentRouter.post(
       req.get('x-session-id')?.trim() ||
       `elevenlabs_${requestUserId}`;
 
+    const transcript = parsed.data.transcript.trim();
+    debugLog('Received /dialogue-turn', {
+      userId: requestUserId,
+      sessionId: resolvedSessionId,
+      transcriptLength: transcript.length,
+      hasMetadata: Boolean(parsed.data.metadata),
+    });
+
     const dialogueResult = await runDialogueAgentTurn({
       userId: requestUserId,
       sessionId: resolvedSessionId,
-      transcript: parsed.data.transcript.trim(),
+      transcript,
       metadata: {
         source: 'elevenlabs-hosted-agent',
         ...(parsed.data.metadata ?? {}),
       },
+    }).catch((error) => {
+      debugLog('Dialogue agent turn failed', {
+        userId: requestUserId,
+        sessionId: resolvedSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    });
+
+    debugLog('Dialogue agent turn completed', {
+      userId: requestUserId,
+      sessionId: resolvedSessionId,
+      turnId: dialogueResult.turnId,
+      responseLength: dialogueResult.coach?.text?.length ?? 0,
+      tone: dialogueResult.tone?.name ?? dialogueResult.tone,
+      mode: dialogueResult.plan?.mode,
     });
 
     res.json({

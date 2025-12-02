@@ -1,3 +1,7 @@
+import { initPhoenixOtel } from './services/phoenixOtel.js';
+
+initPhoenixOtel('dialogue-agent');
+
 import cors from 'cors';
 import express from 'express';
 import morgan from 'morgan';

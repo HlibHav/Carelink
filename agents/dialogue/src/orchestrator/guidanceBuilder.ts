@@ -9,8 +9,20 @@ import type {
   SuggestedActivity,
   HealthSummary,
 } from './types.js';
+import { privacyAssuranceFromProfile } from './privacyPolicy.js';
 
 type ReminderCategory = NonNullable<RoutineReminder['category']>;
+
+const PRIVACY_PATTERNS: RegExp[] = [
+  /privacy/i,
+  /конфіденц/i,
+  /приватн/i,
+  /дан(і|i)/i,
+  /інформац/i,
+  /зберігаєш/i,
+  /збереж/i,
+  /data/i,
+];
 
 const REMINDER_KEYWORDS: Array<{ category: ReminderCategory; patterns: RegExp[] }> = [
   {
@@ -57,6 +69,19 @@ export function extractPreferredName(profile?: Record<string, unknown>): string 
     }
   }
   return undefined;
+}
+
+function hasPrivacyQuestion(listener: ListenerResult): boolean {
+  const transcript = listener.transcript ?? '';
+  if (!transcript) return false;
+  return PRIVACY_PATTERNS.some((pattern) => pattern.test(transcript));
+}
+
+function buildPrivacyAssurance(context: ConversationContext, listener: ListenerResult): string | undefined {
+  if (!hasPrivacyQuestion(listener)) {
+    return undefined;
+  }
+  return privacyAssuranceFromProfile(context.profile);
 }
 
 function topMemoryTexts(entries: MemoryEntry[], limit: number): string[] {
@@ -272,6 +297,7 @@ export function buildResponseGuidance({
   const reminders = buildReminderCandidates(context.goals, context.facts);
   const activities = buildActivitySuggestions(context, listener);
   const healthSummary = buildHealthSummary(context);
+  const privacyAssurance = buildPrivacyAssurance(context, listener);
 
   const identityFacts = topMemoryTexts(context.facts, 3);
   const gratitudeHighlights = topMemoryTexts(context.gratitude, 2);
@@ -291,5 +317,6 @@ export function buildResponseGuidance({
         : emotion.socialNeed === 'wants_connection'
           ? 'Зроби теплий відкритий запит, чи хоче поговорити про когось близького.'
           : undefined,
+    privacyAssurance,
   };
 }

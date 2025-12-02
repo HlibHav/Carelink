@@ -18,8 +18,32 @@ services:
     networks:
       - carelink-network
 
+  phoenix:
+    build:
+      context: .
+      dockerfile: Dockerfile.phoenix
+    container_name: carelink-phoenix
+    ports:
+      - "6006:6006"
+    environment:
+      - PHOENIX_PROJECT_NAME=${PHOENIX_PROJECT_NAME:-Carelink}
+      - PHOENIX_GRPC_PORT=4317
+      - PHOENIX_SQL_DATABASE_URL=sqlite:////phoenix-data/phoenix.db
+    volumes:
+      - phoenix_data:/phoenix-data
+    restart: on-failure:0
+    networks:
+      - carelink-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:6006 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   weaviate_data:
+  phoenix_data:
 
 networks:
   carelink-network:
